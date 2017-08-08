@@ -1,0 +1,9 @@
+*.o
+*.so
+*.a
+.*.swp
+.*.swo
+*.png
+*.txt
+mktraining/mktraining
+blur/blur
