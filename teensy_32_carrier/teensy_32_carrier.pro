@@ -1,4 +1,4 @@
-update=Mon 14 Aug 2017 07:45:27 AM PDT
+update=Thu 17 Aug 2017 01:58:45 PM PDT
 version=1
 last_client=kicad
 [pcbnew]
@@ -27,7 +27,7 @@ NetIExt=net
 version=1
 [eeschema]
 version=1
-LibDir=
+LibDir=/usr/local/share/EDALibraries/KiCad/Schematics
 [eeschema/libraries]
 LibName1=power
 LibName2=device
@@ -59,3 +59,26 @@ LibName27=atmel
 LibName28=contrib
 LibName29=valves
 LibName30=teensy_3
+LibName31=MF_Aesthetics
+LibName32=MF_Connectors
+LibName33=MF_Discrete_Semiconductor
+LibName34=MF_Displays
+LibName35=MF_Frequency_Control
+LibName36=MF_IC_Analog
+LibName37=MF_IC_Digital
+LibName38=MF_IC_Power
+LibName39=MF_LEDs
+LibName40=MF_Passives
+LibName41=MF_Sensors
+LibName42=MF_Switches
+LibName43=maxim
+[schematic_editor]
+version=1
+PageLayoutDescrFile=
+PlotDirectoryName=
+SubpartIdSeparator=0
+SubpartFirstId=65
+NetFmtName=
+SpiceForceRefPrefix=0
+SpiceUseNetNumbers=0
+LabSize=60
