@@ -7,6 +7,7 @@
 .*.swo
 *.png
 *.txt
+*.kicad_pcb-bak
 mktraining/mktraining
 blur/blur
 stb
