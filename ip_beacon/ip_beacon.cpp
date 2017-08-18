@@ -27,7 +27,7 @@
 #include <string.h>
 #include <math.h>
 
-#define DEFAULT_CONFIG "~/ip_beacon.ini"
+#define DEFAULT_CONFIG "/usr/local/etc/ip_beacon.ini"
 
 /* Name to identify as (will default 
  * to the local hostname)
@@ -62,6 +62,8 @@ char verbose[20] = "0";
 SOCKET udpSocket = INVALID_SOCKET;
 volatile bool running = true;
 int verbosity = -1;
+long port_i = -1;
+double delay;
 
 struct Option {
     char const *name;
@@ -104,6 +106,7 @@ void usage(char const *opt) {
         fprintf(stderr, "ip_beacon: unknown option %s\n",
                 opt);
     }
+    fprintf(stderr, "usage: ip_beacon [find] [--option=value ...]\n");
     for (size_t i = 0; i != sizeof(options)/sizeof(options[0]); ++i) {
         fprintf(stderr, "--%s=%s\n",
                 options[i].name, options[i].buf);
@@ -188,7 +191,59 @@ char const *sin_str(struct sockaddr_in const *sin, char *buf) {
     return buf;
 }
 
-void parse_incoming_packet(char const *data, int size, struct sockaddr_in const *sin) {
+
+int prepare_arguments() {
+    /* parse arguments */
+
+    char *o = NULL;
+    port_i = strtol(port, &o, 10);
+    if (port_i < 1 || port_i > 65535) {
+        fprintf(stderr, "Port number %s is not legal (1-65535)\n",
+                port);
+        return -1;
+    }
+    delay = strtod(interval, &o);
+    if (delay <= 0.0) {
+        fprintf(stderr, "Interval %s is not legal (> 0.0)\n",
+                interval);
+        return -1;
+    }
+
+    return 0;
+}
+
+int setup_socket(bool bound) {
+
+    /* prepare the socket */
+
+    udpSocket = ::socket(AF_INET, SOCK_DGRAM, 0);
+    if (udpSocket == INVALID_SOCKET) {
+        perror("Creating socket failed");
+        return -1;
+    }
+    if (bound) {
+        struct sockaddr_in sin = { 0 };
+        sin.sin_family = AF_INET;
+        sin.sin_port = htons((short)port_i);
+        if (bind(udpSocket, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+            fprintf(stderr, "Could not bind to port %d: is another ip_beacon already running?\n",
+                    (short)port_i);
+            closesocket(udpSocket);
+            return -1;
+        }
+    }
+    int one = 1;
+    if (setsockopt(udpSocket, SOL_SOCKET, SO_BROADCAST, &one, sizeof(one)) < 0) {
+        fprintf(stderr, "Could not turn on broadcast for socket\n");
+        closesocket(udpSocket);
+        return -1;
+    }
+
+    return 0;
+}
+
+
+void parse_beacon_packet(char const *data, int size, struct sockaddr_in const *sin) {
 
     char str[50];
     if (is_verbose(1)) {
@@ -231,7 +286,44 @@ void parse_incoming_packet(char const *data, int size, struct sockaddr_in const 
     }
 }
 
-void send_broadcast_packet(short port_i) {
+
+void parse_listing_packet(char const *data, int size, struct sockaddr_in const *sin) {
+
+    char str[50];
+    if (is_verbose(1)) {
+        fprintf(stderr, "Received packet from %s\n",
+                sin_str(sin, str));
+    }
+
+    /* the reason for living -- answer calls for my presence! */
+
+    if (!strncmp(data, "whothere", 7)) {
+        if (is_verbose(2)) {
+            fprintf(stderr, "Ignored an incoming 'whothere' from %s (%.20s)\n",
+                    sin_str(sin, str), data);
+        }
+        return;
+    }
+
+    /* someone else is announcing themselves */
+
+    if (!strncmp(data, "iam ", 4)) {
+        //  send a response
+        fprintf(stdout, "%s: %s\n", &data[4],
+                sin_str(sin, str));
+        return;
+    }
+
+    /* this is some other data I don't recognize */
+
+    if (is_verbose(1)) {
+        fprintf(stderr, "Packet from %s is unknown: %.20s...\n",
+                sin_str(sin, str), data);
+    }
+}
+
+
+void send_broadcast_iam(short port_i) {
     struct sockaddr_in sin = { 0 };
     sin.sin_family = AF_INET;
     sin.sin_port = htons(port_i);
@@ -248,49 +340,27 @@ void send_broadcast_packet(short port_i) {
 }
 
 
-int run_socket_listener() {
-
-    /* parse arguments */
-
-    char *o = NULL;
-    long port_i = strtol(port, &o, 10);
-    if (port_i < 1 || port_i > 65535) {
-        fprintf(stderr, "Port number %s is not legal (1-65535)\n",
-                port);
-        return -1;
-    }
-    double delay = strtod(interval, &o);
-    if (delay <= 0.0) {
-        fprintf(stderr, "Interval %s is not legal (> 0.0)\n",
-                interval);
-        return -1;
-    }
-
-    /* prepare the socket */
-
-    udpSocket = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (udpSocket == INVALID_SOCKET) {
-        perror("Creating socket failed");
-        return -1;
-    }
+void send_broadcast_whothere(short port_i) {
     struct sockaddr_in sin = { 0 };
     sin.sin_family = AF_INET;
-    sin.sin_port = htons((short)port_i);
-    if (bind(udpSocket, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
-        fprintf(stderr, "Could not bind to port %d: is another ip_beacon already running?\n",
-                (short)port_i);
-        closesocket(udpSocket);
-        return -1;
+    sin.sin_port = htons(port_i);
+    memset(&sin.sin_addr, 0xff, sizeof(sin.sin_addr));
+    char msg[512] = "whothere";
+    int s = ::sendto(udpSocket, msg, strlen(msg), 0,
+            (struct sockaddr const *)&sin, (socklen_t)sizeof(sin));
+    if (s < 0) {
+        perror("sendto()");
+    } else if (is_verbose(3)) {
+        fprintf(stderr, "Sent a 'whothere' as broadcast\n");
     }
-    int one = 1;
-    if (setsockopt(udpSocket, SOL_SOCKET, SO_BROADCAST, &one, sizeof(one)) < 0) {
-        fprintf(stderr, "Could not turn on broadcast for socket\n");
-        closesocket(udpSocket);
-        return -1;
-    }
+}
 
-    /* run the main loop */
 
+int run_socket_beacon() {
+
+    /* run the broadcasting loop */
+
+    struct sockaddr_in sin = { 0 };
     fd_set fds;
     FD_ZERO(&fds);
     int num_errors = 0;
@@ -310,10 +380,10 @@ int run_socket_listener() {
                     r = 255;
                 }
                 buf[r] = 0;
-                parse_incoming_packet(buf, r, &sin);
+                parse_beacon_packet(buf, r, &sin);
             }
         } else if (sel == 0) {  //  timeout
-            send_broadcast_packet((short)port_i);
+            send_broadcast_iam((short)port_i);
         } else {                //  error
             perror("select");
             if (++num_errors > 2) {
@@ -334,9 +404,70 @@ int run_socket_listener() {
     return num_errors > 2 ? -1 : 0;
 }
 
+int run_discovery() {
+
+    /* run the broadcasting loop */
+
+    struct sockaddr_in sin = { 0 };
+    fd_set fds;
+    FD_ZERO(&fds);
+    int num_errors = 0;
+    bool first = true;
+    double activeDelay = delay / 3.0;
+    while (running) {
+        FD_SET(udpSocket, &fds);
+        struct timeval timeout = { 0 };
+        timeout.tv_sec = (int)floor(activeDelay);
+        timeout.tv_usec = (int)((activeDelay - timeout.tv_sec) * 1e6);
+        if (first) {
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 0;
+            first = false;
+        }
+        int sel = ::select(FD_SETSIZE, &fds, NULL, NULL, &timeout);
+        if (sel == 1) {         //  ready to read
+            socklen_t slen = (socklen_t)sizeof(sin);
+            char buf[256];
+            int r = ::recvfrom(udpSocket, buf, 256, 0, (struct sockaddr *)&sin, (socklen_t *)&slen);
+            if (r < 0) {        //  error
+            } else {            //  solicitation!
+                if (r > 255) {
+                    r = 255;
+                }
+                buf[r] = 0;
+                parse_listing_packet(buf, r, &sin);
+            }
+        } else if (sel == 0) {  //  timeout
+            send_broadcast_whothere((short)port_i);
+        } else {                //  error
+            perror("select");
+            if (++num_errors > 2) {
+                break;
+            }
+        }
+        if (num_errors > 0) {
+            --num_errors;
+        }
+    }
+
+    /* cleanup */
+
+    closesocket(udpSocket);
+    if (running == false) {
+        fprintf(stderr, "ip_beacon: signal received; shutting down.\n");
+    }
+    return num_errors > 2 ? -1 : 0;
+}
 
 int main(int argc, char const *argv[]) {
     
+    bool is_discovery = false;
+    if (argv[1] && (!strcmp(argv[1], "find") || !strcmp(argv[1], "list"))) {
+        is_discovery = true;
+        ++argv;
+        --argc;
+    }
+
     /* set up default values */
 
     if (gethostname(myname, sizeof(myname)) < 0) {
@@ -360,10 +491,20 @@ int main(int argc, char const *argv[]) {
 
     /* prepare for running */
 
+    if (prepare_arguments() < 0) {
+        return -1;
+    }
+    if (setup_socket(is_discovery ? false : true) < 0) {
+        return -1;
+    }
     setup_signals();
 
     /* run */
 
-    return run_socket_listener();
+    if (is_discovery) {
+        return run_discovery();
+    } else {
+        return run_socket_beacon();
+    }
 }
 

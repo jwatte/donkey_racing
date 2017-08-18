@@ -4,4 +4,8 @@ all:
 	cd build && make
 
 clean:
-	make -C build clean
+	rm -rf build
+
+install:	all
+	sudo bash ./install.sh
+
