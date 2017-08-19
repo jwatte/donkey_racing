@@ -1096,7 +1096,7 @@ R_MOSI
 Wire Wire Line
 	5150 2700 5550 2700
 Text Label 5250 2700 0    60   ~ 0
-R_26
+R_17
 $Comp
 L TACT_6MM SW1
 U 1 1 59955BE1
@@ -1171,8 +1171,6 @@ F 3 "" H 1350 1050 50  0000 C CNN
 	1    0    0    -1  
 $EndComp
 NoConn ~ 10150 2800
-NoConn ~ 9100 2800
-NoConn ~ 9100 2900
 NoConn ~ 9100 3000
 NoConn ~ 10150 3000
 NoConn ~ 10150 3100
@@ -1409,4 +1407,6 @@ Wire Wire Line
 NoConn ~ 1800 3950
 Wire Wire Line
 	700  4350 700  4100
+NoConn ~ 9100 2900
+NoConn ~ 9100 4100
 $EndSCHEMATC
