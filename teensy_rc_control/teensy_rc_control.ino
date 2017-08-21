@@ -1,6 +1,7 @@
 #include "Calibrate.h"
 #include "PinPulseIn.h"
 #include "FlySkyIBus.h"
+#include "Support.h"
 
 #include <Servo.h>
 #include <EEPROM.h>
@@ -33,15 +34,36 @@ void writeTrim();
 void maybeTrim(uint32_t now);
 
 
+void detachServos() {
+  if (carSteer.attached()) {
+    carSteer.detach();
+  }
+  if (carThrottle.attached()) {
+    carThrottle.detach();
+  }
+}
+
+void attachServos() {
+  if (!carSteer.attached()) {
+    carSteer.attach(23);
+  }
+  if (!carThrottle.attached()) {
+    carThrottle.attach(22);
+  }
+}
+
 void setup() {
   rcSteer.init();
   iBus.begin();
   pinMode(3, OUTPUT);
   pinMode(4, OUTPUT);
   pinMode(13, OUTPUT);
+  onCrash(detachServos);
   readTrim();
 }
 
+
+uint32_t lastPrint;
 
 void loop() {
 
@@ -61,26 +83,27 @@ void loop() {
   if (hasRC) {
     maybeTrim(now);
   }
+
+  if (now - lastPrint >= 500) {
+    lastPrint = now;
+    if (SerialUSB.availableForWriting() >= 62) {
+      char buf[62];
+      sprintf(buf, "%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x",
+        fsValues[0], fsValues[1], fsValues[2], fsValues[3], vsValues[4], 
+        fsValues[5], fsValues[6], fsValues[7], fsValues[8], vsValues[9]);
+      SerialUSB.println(buf);
+    }
+  }
   
   if (!hasRC || fsValues[9] < 1750) {
     /* turn off the servos */
-    if (carSteer.attached()) {
-      carSteer.detach();
-    }
-    if (carThrottle.attached()) {
-      carThrottle.detach();
-    }
+    detachServos();
     digitalWrite(13, (now & 192) == 64 );
     digitalWrite(3, (now & 192) == 128);
     digitalWrite(4, (now & 192) == 192);
   } else {
     /* send the current heading/speed */
-    if (!carSteer.attached()) {
-      carSteer.attach(23);
-    }
-    if (!carThrottle.attached()) {
-      carThrottle.attach(22);
-    }
+    attachServos();
     if (iBus.hasFreshFrame()) {
       sendSteer = outSteer.mapOut(inSteer.mapIn(fsValues[0]));
       sendThrottle = outThrottle.mapOut(inThrottle.mapIn(fsValues[1]));
@@ -158,8 +181,8 @@ void readTrim() {
 
 void writeTrim() {
   EEPROM.update(2, outSteer.center_ & 0xff);
-  EEPROM.update(3, (outSteer.center_ & 0xff00) >> 8);
+  EEPROM.update(3, (outSteer.center_ >> 8) & 0xff);
   EEPROM.update(4, outThrottle.center_ & 0xff);
-  EEPROM.update(5, (outThrottle.center_ & 0xff00) >> 8);
+  EEPROM.update(5, (outThrottle.center_ >> 8) & 0xff);
 }
 

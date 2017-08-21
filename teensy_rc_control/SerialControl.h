@@ -97,9 +97,11 @@ class SerialControl {
      *  buffer space available, it may not actually be sent until 
      *  some number of step() calls later, but it's scheduled as 
      *  "send ASAP." On an idle serial bus, it will be enqueued 
-     *  to the hardware before the sendNow() call returns. sendNow()
-     *  returns true if that was possible, and false if the data is
-     *  just queued for "soon" transmitting.
+     *  before the sendNow() call returns. sendNow() returns true 
+     *  if that was possible, and false if the data is just marked 
+     *  for later transmitting. Even if sendNow() returns true, 
+     *  you will have to call step() at least once to push out the
+     *  data.
      */
     bool sendNow(uint8_t id);
     /*  Like sendNow(uint8_t) except pass a pointer to the actually 
@@ -113,25 +115,34 @@ class SerialControl {
     bool enqueuePayload(uint8_t id, void const *data, uint8_t length);
 
     enum {
-      MAX_ITEMS = 16,
+      /*  The number of packets recognized (input and output together) 
+       *  by the automatic management is set through MAX_ITEMS. Too large
+       *  a number will cause higher CPU usage each time the serial port
+       *  attempts to dispatch/recognize a packet.
+       *  If there are packets you only use seldom, you can use the 
+       *  enqueuePayload() and unknownPacketId() functions to handle them.
+       */
+      MAX_ITEMS = 8,
       MAX_INBUF_SIZE = 64,
       MAX_OUTBUF_SIZE = 64
     };
     
   protected:
 
+    /* Information about registered items */
     struct ItemInfo {
       uint8_t id;
       uint8_t flags;
       uint8_t size;
     };
 
+    /*  For ItemInfo.flags */
     enum {
       FlagAutoSend = 0x02,
       FlagReceived = 0x04,
       FlagToSend = 0x08,
       FlagWasAutoSent = 0x10
-    }
+    };
 
     /*  Framing has been detected, and CRC checks out. Look at the 
      *  buffer and pick it apart into separate packets, calling parsePacket()
@@ -159,11 +170,20 @@ class SerialControl {
     void writeOutput(uint32_t now);
     
     HardwareSerial &serial_;
+
+    /*  The implementation does a lot of linear look-ups in these arrays.
+     *  Because the Teensy ARM chip actually has a cache, those look-ups 
+     *  are reasonably fast as long as the maximum number of items is not
+     *  too large.
+     */
     ItemInfo infos_[MAX_ITEMS];
     void *datas_[MAX_ITEMS];
+
     uint32_t lastAutoSendTime_;
     uint8_t inBuf_[MAX_INBUF_SIZE];
+    uint8_t outBuf_[MAX_INBUF_SIZE];
     uint8_t inPtr_;
+    uint8_t outPtr_;
     bool waitForFirstPacket_;
     uint8_t lastRemoteSerial_;
     uint8_t mySerial_;
