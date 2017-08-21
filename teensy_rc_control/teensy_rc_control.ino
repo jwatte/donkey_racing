@@ -102,12 +102,12 @@ uint32_t trimmedTime;
 
 void maybeTrim(uint32_t now) {
 
-  if (now - lastTrimTime >= 100) {
+  if (now - lastTrimTime >= 80) {
   
     lastTrimTime = now;
 
     //  trim enable switch
-    if (fsValues[6] < 1700) {
+    if (fsValues[8] < 1700) {
       return;
     }
     
