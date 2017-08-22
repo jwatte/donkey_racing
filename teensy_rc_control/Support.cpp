@@ -1,4 +1,9 @@
 #include <Arduino.h>
+#include <HardwareSerial.h>
+#include <stdint.h>
+#include <string.h>
+
+#include "Support.h"
 
 static CRASH_CALLBACK gCallback;
 

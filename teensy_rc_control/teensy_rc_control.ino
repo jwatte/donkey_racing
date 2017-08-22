@@ -98,9 +98,9 @@ void loop() {
   if (!hasRC || fsValues[9] < 1750) {
     /* turn off the servos */
     detachServos();
-    digitalWrite(13, (now & 192) == 64 );
-    digitalWrite(3, (now & 192) == 128);
-    digitalWrite(4, (now & 192) == 192);
+    digitalWrite(13, (now & (64+128+256)) == 64);
+    digitalWrite(3, (now & (64+128+256)) == 128);
+    digitalWrite(4, (now & (64+128+256)) == 192);
   } else {
     /* send the current heading/speed */
     attachServos();

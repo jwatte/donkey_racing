@@ -1,8 +1,10 @@
-#include <Arduino.h>
 
 #include "SerialControl.h"
 #include "FastCRC.h"
 #include "Support.h"
+
+#include <string.h>
+#include <HardwareSerial.h>
 
 
 static FastCRC16 gKermit;
@@ -75,7 +77,7 @@ void SerialControl::readInput(uint32_t now) {
     if (inPtr_ == 1 && ch != 0xAA) {
       continue;
     }
-    if (inPtr_ == 4 && ch > sizeof(inBuf_)-7) {
+    if ((inPtr_ == 4) && (ch > (int)sizeof(inBuf_) - 7)) {
       discardingData(inBuf_, inPtr_);
       //  too long packet! maybe I lost sync?
       inPtr_ = (ch == 0x55) ? 1 : 0;
@@ -135,7 +137,7 @@ void SerialControl::writeOutput(uint32_t now) {
       lastAutoSendTime_ = now;
       /* Make sure packets are considered for sending next time around. */
       for (int ix = 0; ix != MAX_ITEMS; ++ix) {
-        infos_[ix].flags_ &= ~FlagWasAutoSent;
+        infos_[ix].flags &= ~FlagWasAutoSent;
       }
     }
   }
@@ -176,7 +178,7 @@ uint8_t SerialControl::remoteSerial() const {
 
 
 bool SerialControl::isRecived(uint8_t id) const {
-  for (int i = 0; i != NUM_ITEMS; ++i) {
+  for (int i = 0; i != MAX_ITEMS; ++i) {
     if (infos_[i].id == id) {
       return (infos_[i].flags & FlagReceived) == FlagReceived;
     }
@@ -186,7 +188,7 @@ bool SerialControl::isRecived(uint8_t id) const {
 
 
 void SerialControl::clearRecived(uint8_t id) {
-  for (int i = 0; i != NUM_ITEMS; ++i) {
+  for (int i = 0; i != MAX_ITEMS; ++i) {
     if (infos_[i].id == id) {
       infos_[i].flags &= ~FlagReceived;
       return;
@@ -196,7 +198,7 @@ void SerialControl::clearRecived(uint8_t id) {
 
 
 bool SerialControl::getFresh(uint8_t id) {
-  for (int i = 0; i != NUM_ITEMS; ++i) {
+  for (int i = 0; i != MAX_ITEMS; ++i) {
     if (infos_[i].id == id) {
       bool ret = (infos_[i].flags & FlagReceived) == FlagReceived;
       infos_[i].flags &= ~FlagReceived;
@@ -208,7 +210,7 @@ bool SerialControl::getFresh(uint8_t id) {
 
 
 bool SerialControl::getFresh(void const *data) {
-  for (int i = 0; i != NUM_ITEMS; ++i) {
+  for (int i = 0; i != MAX_ITEMS; ++i) {
     if (datas_[i] == data) {
       bool ret = (infos_[i].flags & FlagReceived) == FlagReceived;
       infos_[i].flags &= ~FlagReceived;
@@ -220,9 +222,13 @@ bool SerialControl::getFresh(void const *data) {
 
 
 bool SerialControl::sendNow(uint8_t id) {
-  for (int i = 0; i != NUM_ITEMS; ++i) {
-    if (datas_[i].id == id) {
-      
+  for (int i = 0; i != MAX_ITEMS; ++i) {
+    if (infos_[i].id == id) {
+      if (enqueuePayload(id, datas_[i], infos_[i].size)) {
+        return true;
+      }
+      infos_[i].flags |= FlagToSend;
+      break;
     }
   }
   return false;
@@ -230,17 +236,53 @@ bool SerialControl::sendNow(uint8_t id) {
 
 
 bool SerialControl::sendNow(void const *data) {
-  
+  for (int i = 0; i != MAX_ITEMS; ++i) {
+    if (datas_[i] == data) {
+      if (enqueuePayload(infos_[i].id, datas_[i], infos_[i].size)) {
+        return true;
+      }
+      infos_[i].flags |= FlagToSend;
+      break;
+    }
+  }
+  return false;
 }
 
 
 bool SerialControl::enqueuePayload(uint8_t id, void const *data, uint8_t length) {
-  
+  uint8_t needed = length + 2;
+  if (outPtr_ == 0) {
+    needed += 5;
+  }
+  if (needed > sizeof(outBuf_) - outPtr_) {
+    return false;
+  }
+  if (outPtr_ == 0) {
+    ++mySerial_;
+    if (mySerial_ == 0) {
+      mySerial_ = 1;
+    }
+    outPtr_ = 5;
+  }
+  outBuf_[0] = 0x55;
+  outBuf_[1] = 0xAA;
+  outBuf_[2] = mySerial_;
+  outBuf_[3] = lastRemoteSerial_;
+  outBuf_[4] = outPtr_ + length - 5;
+  memmove(&outBuf_[outPtr_], data, length);
+  outPtr_ += length;
 }
 
 
 void SerialControl::parseFrame(uint8_t const *data, uint8_t length) {
-  
+  while (length > 0) {
+    uint8_t id = *data;
+    for (int i = 0; i != MAX_ITEMS; ++i) {
+      if (infos_[i].id == id) {
+        
+      }
+    }
+  }
 }
 
 
@@ -250,10 +292,10 @@ uint8_t SerialControl::parsePacket(uint8_t type, uint8_t const *data, uint8_t ma
 
 
 void SerialControl::unknownPacketId(uint8_t type, uint8_t const *data, uint8_t maxsize) {
-  
+  //  do nothing
 }
 
 void SerialControl::discardingData(uint8_t const *base, uint8_t length) {
-  
+  //  do nothing
 }
 

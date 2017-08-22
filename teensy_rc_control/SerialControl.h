@@ -1,7 +1,9 @@
 #if !defined(SerialControl_h)
 #define SerialControl_h
 
+#include <stdint.h>
 
+class HardwareSerial;
 
 /*
  * The protocol for the serial port connection is a number of free-standing messages.
