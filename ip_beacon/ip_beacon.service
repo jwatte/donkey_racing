@@ -6,5 +6,9 @@ Wants=networking.service
 
 [Service]
 Type=idle
-ExecStart=/usr/local/sbin/ip_beacon
+ExecStart=/usr/local/bin/ip_beacon
 ExecStop=killall ip_beacon
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=graphical.target

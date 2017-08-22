@@ -9,3 +9,5 @@ clean:
 install:	all
 	sudo bash ./install.sh
 
+uninstall:
+	sudo bash ./uninstall.sh
