@@ -86,11 +86,11 @@ void loop() {
 
   if (now - lastPrint >= 500) {
     lastPrint = now;
-    if (SerialUSB.availableForWriting() >= 62) {
+    if (SerialUSB.availableForWrite() >= 62) {
       char buf[62];
       sprintf(buf, "%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x",
-        fsValues[0], fsValues[1], fsValues[2], fsValues[3], vsValues[4], 
-        fsValues[5], fsValues[6], fsValues[7], fsValues[8], vsValues[9]);
+        fsValues[0], fsValues[1], fsValues[2], fsValues[3], fsValues[4], 
+        fsValues[5], fsValues[6], fsValues[7], fsValues[8], fsValues[9]);
       SerialUSB.println(buf);
     }
   }
