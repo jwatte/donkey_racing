@@ -1,0 +1,15 @@
+#if !defined(YUV_H)
+#define YUV_H
+
+#if !defined(YUV_EXTERN) 
+ #if defined(__cplusplus)
+  #define YUV_EXTERN extern "C"
+ #else
+  #define YUV_EXTERN
+ #endif
+#endif
+
+YUV_EXTERN void yuv_to_rgb(unsigned char const *yuv, unsigned char *rgb, int xs, int ys);
+YUV_EXTERN void rgb_to_yuv(unsigned char *oot, unsigned char const *d, int xs, int ys);
+
+#endif  //  YUV_H

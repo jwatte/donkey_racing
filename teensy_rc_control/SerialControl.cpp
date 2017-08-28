@@ -10,7 +10,7 @@
 static FastCRC16 gKermit;
 
 
-SerialControl::SerialControl(HardwareSerial &serial, bool waitForFirstPacket)
+SerialControl::SerialControl(Stream &serial, bool waitForFirstPacket)
   : serial_(serial)
   , lastAutoSendTime_(0)
   , inPtr_(0)
@@ -47,8 +47,7 @@ void SerialControl::bind(uint8_t id, void *data, uint8_t size, bool autoSend) {
 }
 
 
-void SerialControl::begin(uint32_t br) {
-  serial_.begin(br);
+void SerialControl::begin() {
   inPtr_ = 0;
   outPtr_ = 0;
   for (int i = 0; i != MAX_ITEMS; ++i) {
@@ -271,6 +270,7 @@ bool SerialControl::enqueuePayload(uint8_t id, void const *data, uint8_t length)
   outBuf_[4] = outPtr_ + length - 5;
   memmove(&outBuf_[outPtr_], data, length);
   outPtr_ += length;
+  return true;
 }
 
 

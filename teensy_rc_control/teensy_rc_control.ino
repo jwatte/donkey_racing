@@ -2,6 +2,8 @@
 #include "PinPulseIn.h"
 #include "FlySkyIBus.h"
 #include "Support.h"
+#include "Packets.h"
+#include "SerialControl.h"
 
 #include <Servo.h>
 #include <EEPROM.h>
@@ -14,14 +16,18 @@ PinPulseIn<14> rcSteer;
 Servo carSteer;
 Servo carThrottle;
 
-uint16_t fsValues[10];
-FlySkyIBus iBus(Serial1, fsValues, 10);
+SerialControl gSerialControl(SerialUSB, true);
+
+#define fsValues iBusPacket.data
+IBusPacket iBusPacket;
+FlySkyIBus iBus(Serial1, fsValues, sizeof(fsValues)/sizeof(fsValues[0]));
 
 Calibrate inSteer;
 Calibrate inThrottle;
 Calibrate outSteer(CENTER_CALIBRATION);
 Calibrate outThrottle;
 
+SteerControl steerControl;
 int16_t sendSteer = 0;
 int16_t sendThrottle = 0;
 
@@ -60,10 +66,11 @@ void setup() {
   pinMode(13, OUTPUT);
   onCrash(detachServos);
   readTrim();
+  gSerialControl.bind(IBusPacket::PacketCode, &iBusPacket, sizeof(iBusPacket), true);
+  SerialUSB.begin(1000000);
+  gSerialControl.begin();
 }
 
-
-uint32_t lastPrint;
 
 void loop() {
 
@@ -84,29 +91,26 @@ void loop() {
     maybeTrim(now);
   }
 
-  if (now - lastPrint >= 500) {
-    lastPrint = now;
-    if (SerialUSB.availableForWrite() >= 62) {
-      char buf[62];
-      sprintf(buf, "%04x %04x %04x %04x %04x %04x %04x %04x %04x %04x",
-        fsValues[0], fsValues[1], fsValues[2], fsValues[3], fsValues[4], 
-        fsValues[5], fsValues[6], fsValues[7], fsValues[8], fsValues[9]);
-      SerialUSB.println(buf);
-    }
-  }
-  
   if (!hasRC || fsValues[9] < 1750) {
     /* turn off the servos */
     detachServos();
     digitalWrite(13, (now & (64+128+256)) == 64);
     digitalWrite(3, (now & (64+128+256)) == 128);
     digitalWrite(4, (now & (64+128+256)) == 192);
+    steerControl.steer = (int16_t)0x8000;
+    steerControl.throttle = (int16_t)0x8000;
+    gSerialControl.sendNow(&steerControl);
   } else {
     /* send the current heading/speed */
     attachServos();
     if (iBus.hasFreshFrame()) {
-      sendSteer = outSteer.mapOut(inSteer.mapIn(fsValues[0]));
-      sendThrottle = outThrottle.mapOut(inThrottle.mapIn(fsValues[1]));
+      float fSteer = inSteer.mapIn(fsValues[0]);
+      steerControl.steer = intFloat(fSteer);
+      sendSteer = outSteer.mapOut(fSteer);
+      float fThrottle = inThrottle.mapIn(fsValues[1]);
+      steerControl.throttle = intFloat(fThrottle);
+      sendThrottle = outThrottle.mapOut(fThrottle);
+      gSerialControl.sendNow(&steerControl);
     }
     carSteer.writeMicroseconds(sendSteer);
     carThrottle.writeMicroseconds(sendThrottle);
@@ -115,13 +119,18 @@ void loop() {
     digitalWrite(4, sendSteer > outSteer.center_ ? HIGH : LOW);
   }
 
+  uint32_t next = now;
   do {
     iBus.update();
-  } while (millis() < now + 5);
+    gSerialControl.step(next);
+  } while ((next = millis()) < (now + 5));
 }
 
-uint32_t lastTrimTime;
-uint32_t trimmedTime;
+
+static uint32_t lastTrimTime;
+static uint32_t trimmedTime;
+static TrimInfo trimInfo;
+
 
 void maybeTrim(uint32_t now) {
 
@@ -160,6 +169,9 @@ void maybeTrim(uint32_t now) {
       }
     }
 
+    trimInfo.curTrimSteer = outSteer.center_;
+    trimInfo.curTrimThrottle = outThrottle.center_;
+
     if ((trimmedTime != 0) && (now - trimmedTime > 10000)) {
       //  write to EEPROM 10 seconds after a trim has been made and no further changes
       writeTrim();
@@ -168,21 +180,30 @@ void maybeTrim(uint32_t now) {
   }
 }
 
+
 void readTrim() {
   uint16_t center = EEPROM.read(2) + ((uint16_t)EEPROM.read(3) << 8);
   if (center >= 1300 && center <= 1700) {
     outSteer.center_ = center;
   }
+  trimInfo.eeTrimSteer = center;
   center = EEPROM.read(4) + ((uint16_t)EEPROM.read(5) << 8);
   if (center >= 1300 && center <= 1700) {
     outThrottle.center_ = center;
   }
+  trimInfo.eeTrimThrottle = center;
+  trimInfo.curTrimSteer = outSteer.center_;
+  trimInfo.curTrimThrottle = outThrottle.center_;
+  gSerialControl.bind(TrimInfo::PacketCode, &trimInfo, sizeof(trimInfo), true);
 }
+
 
 void writeTrim() {
   EEPROM.update(2, outSteer.center_ & 0xff);
   EEPROM.update(3, (outSteer.center_ >> 8) & 0xff);
   EEPROM.update(4, outThrottle.center_ & 0xff);
   EEPROM.update(5, (outThrottle.center_ >> 8) & 0xff);
+  trimInfo.eeTrimSteer = outSteer.center_;
+  trimInfo.eeTrimThrottle = outThrottle.center_;
 }
 

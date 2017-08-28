@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-class HardwareSerial;
+class Stream;
 
 /*
  * The protocol for the serial port connection is a number of free-standing messages.
@@ -41,7 +41,7 @@ class SerialControl {
   
   public:
   
-    SerialControl(HardwareSerial &serial, bool waitForFirstPacket = true);
+    SerialControl(Stream &serial, bool waitForFirstPacket = true);
 
     /*  Bind a given struct to the given ID. The struct layout in 
      *  memory will be replicated verbatim on the wire. This is 
@@ -64,9 +64,9 @@ class SerialControl {
      */
     void bind(uint8_t id, void *data, uint8_t size, bool autoSend = false);
 
-    /*  Set up the serial port and initiate talking the protocol
+    /*  initiate talking the protocol
      */
-    void begin(uint32_t br);
+    void begin();
     /*  Update the protocol/send/receive. Call this each time 
      *  through the main loop.
      */
@@ -171,7 +171,7 @@ class SerialControl {
     void readInput(uint32_t now);
     void writeOutput(uint32_t now);
     
-    HardwareSerial &serial_;
+    Stream &serial_;
 
     /*  The implementation does a lot of linear look-ups in these arrays.
      *  Because the Teensy ARM chip actually has a cache, those look-ups 

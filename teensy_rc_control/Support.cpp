@@ -17,7 +17,7 @@ void CRASH_ERROR(char const *msg) {
   if (gCallback) {
     gCallback();
   }
-  size_t sl = strlen(msg);
+  int sl = (int)strlen(msg);
   int n = 0;
   while (true) {
     if ((n & 127) == 127) {
@@ -29,5 +29,43 @@ void CRASH_ERROR(char const *msg) {
     ++n;
     delay(50);
   }
+}
+
+static DebugVal *gDebugVals;
+
+void debugVal(DebugVal *dv) {
+  for (DebugVal **dp = &gDebugVals; *dp; dp = &(*dp)->_ptr) {
+    if (*dp == dv) {
+      //  updated!
+      return;
+    }
+  }
+  dv->_ptr = NULL;
+  *dp = dv;
+}
+
+void debugVal(DebugVal *dv, char const *name, int val) {
+  snprintf(dv->value, 16, "%d", val);
+}
+
+void debugVal(DebugVal *dv, char const *name, float val) {
+  snprintf(dv->value, 16, "%.6e", val);
+}
+
+DebugVal const *firstDebugVal() {
+  return gDebugVals;
+}
+
+DebugVal const *nextDebugVal(DebugVal const *prev) {
+  return prev ? prev->_ptr : NULL;
+}
+
+DebugVal const *findDebugVal(char const *name) {
+  for (DebugVal *dv = gDebugVals; dv; dv = dv->_ptr) {
+    if (!strcmp(name, dv->name)) {
+      return dv;
+    }
+  }
+  return NULL;
 }
 
