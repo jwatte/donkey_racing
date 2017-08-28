@@ -1,4 +1,4 @@
-update=Sat 19 Aug 2017 02:44:38 PM PDT
+update=Sat 26 Aug 2017 05:42:42 PM PDT
 version=1
 last_client=kicad
 [pcbnew]
@@ -25,9 +25,19 @@ version=1
 NetIExt=net
 [general]
 version=1
+[schematic_editor]
+version=1
+PageLayoutDescrFile=
+PlotDirectoryName=
+SubpartIdSeparator=0
+SubpartFirstId=65
+NetFmtName=Pcbnew
+SpiceForceRefPrefix=0
+SpiceUseNetNumbers=0
+LabSize=60
 [eeschema]
 version=1
-LibDir=/usr/local/share/EDALibraries/KiCad/Schematics
+LibDir=/usr/local/src/EDALibraries/KiCad/Schematics
 [eeschema/libraries]
 LibName1=power
 LibName2=device
@@ -72,13 +82,3 @@ LibName40=MF_Passives
 LibName41=MF_Sensors
 LibName42=MF_Switches
 LibName43=maxim
-[schematic_editor]
-version=1
-PageLayoutDescrFile=
-PlotDirectoryName=
-SubpartIdSeparator=0
-SubpartFirstId=65
-NetFmtName=Pcbnew
-SpiceForceRefPrefix=0
-SpiceUseNetNumbers=0
-LabSize=60
