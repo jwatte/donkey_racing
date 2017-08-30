@@ -51,6 +51,7 @@ pickle.dump({'mapx':mapx, 'mapy':mapy, 'w':w, 'h':h, 'x':x, 'y': y}, open("calib
 print("Done calibrating; here's an undistorted image")
 
 dst = cv2.remap(im, mapx, mapy, cv2.INTER_LINEAR)
+x, y, w, h = roi
 dst = dst[y:h+h, x:x+w]
 cv2.imshow('cropped, rectified, %dx%d' % (w, h), dst)
 cv2.waitKey(30000)
