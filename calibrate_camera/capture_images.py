@@ -13,7 +13,7 @@ s, im0 = cap.read()
 images=[]
 cv2.waitKey(1)
 cv2.waitKey(1)
-cv2.waitKey(1)
+cv2.waitKey(5000)
 print("press a key for each picture (or wait 3 seconds)")
 for i in range(0, 20):
     cv2.waitKey(3000)
@@ -24,7 +24,14 @@ for i in range(0, 20):
     s, im0 = cap.read()
     s, im0 = cap.read()
     # cv2.cvtColor(im0, cv2.cv.CV_RGB2BGR, im0)
-    images.append(im0)
+    gray = cv2.cvtColor(im0, cv2.COLOR_BGR2GRAY)
+    ret, corners = cv2.findChessboardCorners(gray, (8, 6), None)
+    if ret:
+        images.append(im0)
+    else:
+        print("oops, no checkerboard detected")
+    if len(images) >= 9:
+        break
 cap.release()
 
 n = 1
