@@ -6,6 +6,7 @@
 .*.swp
 .*.swo
 *.png
+*.pkl
 *.kicad_pcb-bak
 mktraining/mktraining
 blur/blur

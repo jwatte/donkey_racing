@@ -36,19 +36,21 @@ for i in images:
 print("Loaded %d images; calibrating" % (len(images),))
 
 ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
-img = images[0]
-h, v = img.shape[:2]
+h, w = im.shape[:2]
 newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
+print("roi=" + repr(roi) + "; newcameramtx=" + repr(newcameramtx))
+if (roi[2] == 0) or (roi[3] == 0):
+    roi = (0, 0, w, h)
 
 mapx, mapy = cv2.initUndistortRectifyMap(mtx, dist, None, newcameramtx, (w, h), 5)
+x, y, w, h = roi
 
 print("Saving parameters to calibrate.pkl")
 import cPickle as pickle
 pickle.dump({'mapx':mapx, 'mapy':mapy, 'w':w, 'h':h, 'x':x, 'y': y}, open("calibrate.pkl", "wb"))
 print("Done calibrating; here's an undistorted image")
 
-dst = cv2.remap(img, mapx, mapy, cv2.INTERP_LINEAR)
-x, y, w, h = roi
+dst = cv2.remap(im, mapx, mapy, cv2.INTER_LINEAR)
 dst = dst[y:h+h, x:x+w]
 cv2.imshow('cropped, rectified, %dx%d' % (w, h), dst)
 cv2.waitKey(30000)
