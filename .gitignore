@@ -8,6 +8,8 @@
 *.png
 *.pkl
 *.kicad_pcb-bak
+*.summary
+*.log
 mktraining/mktraining
 blur/blur
 stb

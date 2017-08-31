@@ -140,11 +140,20 @@ def load_model(pathname):
     return predict_net
 
 def run_inference(data, predict_net):
-    workspace.FeedBlob("data", blob)
+    workspace.FeedBlob("data", data)
     workspace.RunNetOnce(predict_net)
     output = workspace.FetchBlob("output")
     return output[0]
 
 (train, test, deploy) = build_networks()
 save_protobufs(train, test, deploy)
+
+
+workspace.RunNetOnce(train.param_init_net)
+workspace.CreateNet(train.net, overwrite=True)
+a = np.zeros((3,224,84))
+i = run_inference(a, deploy.net)
+print(repr(i))
+
+
 
