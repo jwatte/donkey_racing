@@ -5,8 +5,11 @@ import cv2
 import cPickle as pickle
 import numpy as np
 
+if sys.argv[1].find(".pkl") != -1:
+    src = np.array(pickle.load(open(sys.argv[1], "rb")))
+else:
+    src = cv2.imread(sys.argv[1])
 cdata = pickle.load(open("calibrate.pkl", "rb"))
-src = cv2.imread(sys.argv[1])
 dst = cv2.remap(src, cdata['mapx'], cdata['mapy'], cv2.INTER_LINEAR)
 x, y, w, h = (cdata['x'], cdata['y'], cdata['w'], cdata['h'])
 x = 96
