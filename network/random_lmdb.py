@@ -11,10 +11,11 @@ def create_db(output_file):
     with env.begin(write=True) as txn:
         for j in range(0, 16):
             # MODIFY: add your own data reader / creator
-            width = 224
-            height = 84
+            # 2C * 221W * 93H
+            width = 221
+            height = 93
 
-            img_data = np.random.rand(3, width, height)
+            img_data = np.random.rand(2, height, width)
 
             # Create TensorProtos
             tensor_protos = caffe2_pb2.TensorProtos()

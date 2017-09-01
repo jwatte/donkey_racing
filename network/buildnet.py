@@ -14,38 +14,38 @@ proto_folder = os.path.join(root_folder, 'proto')
 
 def AddInput(model, batch_size, db, db_type):
     data_uint8, label = model.TensorProtosDBInput(
-                    [], ["data_uint8", "label"], batch_size=batch_size,
-                            db=db, db_type=db_type)
-    data = model.Cast(data_uint8, "data", to=core.DataType.FLOAT)
+        [], ["data_uint8", "label"], batch_size=batch_size,
+        db=db, db_type=db_type)
+    data = model.Cast(data_uint8, "data_cast", to=core.DataType.FLOAT)
     data = model.Scale(data, data, scale=float(1./255))
     data = model.StopGradient(data, data)
     return data, label
 
-# input: 3C * 224W * 84H    --  todo: change to 213x85
-# todo: tweak sizes to get rid of single-pixel strips lost
+# input: 2C * 221W * 93H
 def AddNetModel(model, data):
-                                                                            # learned parameters
-    # 224x84 -> 221x81
-    conv1 = brew.conv(model, data, 'conv1', dim_in=3, dim_out=8, kernel=4)  # 3*8*4*4
-    # 221x81 -> 110x40
-    pool1 = brew.max_pool(model, conv1, 'pool1', kernel=2, stride=2)        #
-    # 110x40 -> 107x37
-    conv2 = brew.conv(model, pool1, 'conv2', dim_in=8, dim_out=16, kernel=4) # 8*16*4*4
-    # 107x37 -> 53x18
-    pool2 = brew.max_pool(model, conv2, 'pool2', kernel=2, stride=2)        #
-    # 53x18 -> 50x15
-    conv3 = brew.conv(model, pool2, 'conv3', dim_in=16, dim_out=32, kernel=4)# 16*32*4*4
-    # 50x15 -> 25x7
-    pool3 = brew.max_pool(model, conv3, 'pool3', kernel=2, stride=2)        #
-    # 25x7 -> 22x4
-    conv4 = brew.conv(model, pool3, 'conv4', dim_in=32, dim_out=64, kernel=4)# 32*64*4*4
-    # 22x4 -> 11x2
-    pool4 = brew.max_pool(model, conv4, 'pool4', kernel=2, stride=2)        #
-    # 11x2 -> 128
-    fc4 = brew.fc(model, pool4, 'fc4', dim_in=64*11*2, dim_out=128)         # 64*11*2*128
-    fc4 = brew.relu(model, fc4, fc4)                                        #
+    # 221x93 -> 218x90
+    conv1 = brew.conv(model, data, 'conv1', dim_in=2, dim_out=8, kernel=4)
+    # 218x90 -> 109x45
+    pool1 = brew.max_pool(model, conv1, 'pool1', kernel=2, stride=2)
+    # 109x45 -> 106x42
+    conv2 = brew.conv(model, pool1, 'conv2', dim_in=8, dim_out=16, kernel=4)
+    # 106x42 -> 53x21
+    pool2 = brew.max_pool(model, conv2, 'pool2', kernel=2, stride=2)
+    relu2 = brew.relu(model, pool2, 'relu2')
+    # 53x21 -> 50x18
+    conv3 = brew.conv(model, relu2, 'conv3', dim_in=16, dim_out=32, kernel=4)
+    # 50x18 -> 25x9
+    pool3 = brew.max_pool(model, conv3, 'pool3', kernel=2, stride=2)
+    # 25x9 -> 22x6
+    conv4 = brew.conv(model, pool3, 'conv4', dim_in=32, dim_out=64, kernel=4)
+    # 22x6 -> 11x3
+    pool4 = brew.max_pool(model, conv4, 'pool4', kernel=2, stride=2)
+    relu4 = brew.relu(model, pool4, 'relu4')
+    # 11x3 -> 128
+    fc4 = brew.fc(model, relu4, 'fc4', dim_in=64*11*3, dim_out=128)
+    fc4 = brew.relu(model, fc4, fc4)
     # 128 -> 2
-    output = brew.fc(model, fc4, 'output', dim_in=128, dim_out=2)           # 128*2
+    output = brew.fc(model, fc4, 'output', dim_in=128, dim_out=2)
     return output
 
 def AddAccuracy(model, output, label):
@@ -94,7 +94,7 @@ def build_networks():
 
     deploy_model = model_helper.ModelHelper(
         name="donkey_deploy", arg_scope=arg_scope, init_params=False)
-    AddNetModel(deploy_model, "data")
+    AddNetModel(deploy_model, "input")
 
     return (train_model, test_model, deploy_model)
 
@@ -127,7 +127,7 @@ def save_trained_model(deploy_model):
     pe_meta = pe.PredictorExportMeta(
         predict_net=deploy_model.net.Proto(),
         parameters=[str(b) for b in deploy_model.params], 
-        inputs=["data"],
+        inputs=["input"],
         outputs=["output"])
     savepath = os.path.join(root_folder, "donkey_model.minidb")
     pe.save_to_db("minidb", savepath, pe_meta)
@@ -140,7 +140,7 @@ def load_model(pathname):
     return predict_net
 
 def run_inference(data, predict_net):
-    workspace.FeedBlob("data", data)
+    workspace.FeedBlob("input", data)
     workspace.RunNetOnce(predict_net)
     output = workspace.FetchBlob("output")
     return output[0]
@@ -151,9 +151,7 @@ save_protobufs(train, test, deploy)
 
 workspace.RunNetOnce(train.param_init_net)
 workspace.CreateNet(train.net, overwrite=True)
-a = np.zeros((3,224,84))
+a = np.zeros((1,2,221,93), np.float32)
 i = run_inference(a, deploy.net)
 print(repr(i))
-
-
 
