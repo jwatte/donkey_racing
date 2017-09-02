@@ -1,6 +1,7 @@
 from __future__ import division, print_function
 import numpy as np
 import os
+import time
 
 from caffe2.python import core, model_helper, net_drawer, workspace, visualize, brew
 
@@ -152,6 +153,10 @@ save_protobufs(train, test, deploy)
 workspace.RunNetOnce(train.param_init_net)
 workspace.CreateNet(train.net, overwrite=True)
 a = np.zeros((1,2,221,93), np.float32)
-i = run_inference(a, deploy.net)
+start = time.time()
+for i in range(0, 100):
+    i = run_inference(a, deploy.net)
+stop = time.time()
+print("Time per inference: %f seconds\n" % ((stop-start)/100.0,))
 print(repr(i))
 
