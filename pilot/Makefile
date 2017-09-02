@@ -11,6 +11,30 @@ CPPFLAGS:=$(CFLAGS) -std=gnu++11
 TOOL_O:=$(patsubst %,obj/%.o,$(TOOLS))
 PILOT_O:=$(filter-out $(TOOL_O),$(C_O) $(CPP_O))
 
+
+# Some rules for automatically syntax checking vertex/fragment shader pairs
+VSHADERS:=$(wildcard data/*.vertex.glsl)
+FSHADERS:=$(wildcard data/*.fragment.glsl)
+ifeq ($(VSHADERS),)
+$(error "no vertex shaders found")
+endif
+ifeq ($(FSHADERS),)
+$(error "no fragment shaders found")
+endif
+VSHADERNAMES:=$(patsubst data/%.vertex.glsl,%,$(VSHADERS))
+FSHADERNAMES:=$(patsubst data/%.fragment.glsl,%,$(FSHADERS))
+ifeq ($(VSHADERNAMES),)
+$(error "Could not calculate vertex shader names")
+endif
+ifeq ($(FSHADERNAMES),)
+$(error "Could not calculate fragment shader names")
+endif
+TEXTURES:=$(wildcard data/*.jpg) $(wildcard data/*.png) $(wildcard data/*.tga)
+TEXTURENAMES:=$(patsubst data/%.jpg,%,$(patsubst data/%.png,%,$(patsubst data/%.tga,%,$(TEXTURES))))
+MESHES:=$(wildcard data/*.mesh)
+MESHNAMES:=$(patsubst data/%.mesh,%,$(MESHES))
+
+
 #test:	mkdetect mkchecker
 #	#./mkchecker > checker.yuv
 #	#./mkpng checker.yuv yuv
@@ -18,8 +42,13 @@ PILOT_O:=$(filter-out $(TOOL_O),$(C_O) $(CPP_O))
 #	./mkdetect dump /tmp/foo.png sample.yuv
 #	feh /tmp/foo.png /tmp/square.png
 
-all:	pilot $(TOOLS)
+all:	pilot $(TOOLS) test_compile
 	./pilot --test 2>&1 | sed -e 's/^pilot: //' 1>&2
+
+test_compile:	pilot
+	./pilot $(patsubst %,--compile %,$(sort $(VSHADERNAMES) $(FSHADERNAMES))) \
+		$(patsubst %,--loadtexture %,$(sort $(TEXTURENAMES))) \
+		$(patsubst %,--loadmesh %,$(sort $(MESHNAMES)))
 
 pilot:	$(PILOT_O)
 	g++ -g -o $@ $(PILOT_O) $(LIBS) -std=gnu++11

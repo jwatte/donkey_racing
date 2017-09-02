@@ -34,7 +34,8 @@ void CRASH_ERROR(char const *msg) {
 static DebugVal *gDebugVals;
 
 void debugVal(DebugVal *dv) {
-  for (DebugVal **dp = &gDebugVals; *dp; dp = &(*dp)->_ptr) {
+  DebugVal **dp;
+  for (dp = &gDebugVals; *dp; dp = &(*dp)->_ptr) {
     if (*dp == dv) {
       //  updated!
       return;

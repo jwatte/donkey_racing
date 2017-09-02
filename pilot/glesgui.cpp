@@ -13,6 +13,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <sstream>
 
 #include "bcm_host.h"
 
@@ -48,7 +49,13 @@ static void (*cb_mousemove)(int, int, unsigned int);
 static void (*cb_mousebutton)(int, int, int, int);
 static void (*cb_draw)();
 static Texture fontTexture;
+static Mesh fontMesh;
+static Program fontProgram;
+static float guiTransform[16];
 static std::map<std::string, Texture> gNamedTextures;
+static std::map<std::string, Mesh> gNamedMeshes;
+static unsigned int boundProgram = (unsigned int)-1;
+static unsigned int boundTexture = (unsigned int)-1;
 
 
 
@@ -175,6 +182,13 @@ static bool init_ogl(Context *ctx, unsigned int width, unsigned int height) {
     unsigned int bmheight;
     get_truetype_bitmap(&data, &bmwidth, &bmheight);
     gg_allocate_texture(data, bmwidth, bmheight, 0, 1, &fontTexture);
+    gg_allocate_mesh(NULL, 16, 0, NULL, 0, 8, 0, &fontMesh, MESH_FLAG_DYNAMIC);
+    gg_get_gui_transform(guiTransform);
+    char err[128];
+    if (!gg_compile_named_program("gui", err, 128)) {
+        fprintf(stderr, "Can't load gui program: %s\n", err);
+        return false;
+    }
 
     return true;
 }
@@ -188,39 +202,53 @@ int gg_compile_program(char const *vshader, char const *fshader, Program *oProg,
     oProg->vshader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(oProg->vshader, 1, (GLchar const **)&vshader, 0);
     glCompileShader(oProg->vshader);
-    if (glGetError() != GL_NO_ERROR) {
-        glGetShaderInfoLog(oProg->vshader, sizeof(tmplog), NULL, tmplog);
-        snprintf(error, esize, "vertex shader error: %s", tmplog);
+    GLuint err = glGetError();
+    GLint status = 0;
+    GLsizei length = sizeof(tmplog);
+    glGetShaderiv(oProg->vshader, GL_COMPILE_STATUS, &status);
+    if (status != GL_TRUE || err != GL_NO_ERROR) {
+        glGetShaderInfoLog(oProg->vshader, sizeof(tmplog), &length, tmplog);
+        snprintf(error, esize, "vertex shader error: (%x) %.*s", err, (int)length, tmplog);
         return -1;
     }
 
     oProg->fshader = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(oProg->fshader, 1, (GLchar const **)&fshader, 0);
     glCompileShader(oProg->fshader);
-    if (glGetError() != GL_NO_ERROR) {
-        glGetShaderInfoLog(oProg->fshader, sizeof(tmplog), NULL, tmplog);
-        snprintf(error, esize, "fragment shader error: %s", tmplog);
+    err = glGetError();
+    status = 0;
+    glGetShaderiv(oProg->fshader, GL_COMPILE_STATUS, &status);
+    if (status != GL_TRUE || err != GL_NO_ERROR) {
+        glGetShaderInfoLog(oProg->fshader, sizeof(tmplog), &length, tmplog);
+        snprintf(error, esize, "fragment shader error: (%x) %.*s", err, (int)length, tmplog);
         return -1;
     }
 
     oProg->program = glCreateProgram();
     glAttachShader(oProg->program, oProg->vshader);
     glAttachShader(oProg->program, oProg->fshader);
+    glBindAttribLocation(oProg->program, 0, "v_pos");
+    glBindAttribLocation(oProg->program, 1, "v_tex");
+    glBindAttribLocation(oProg->program, 2, "v_color");
     glLinkProgram(oProg->program);
-    GLuint err = glGetError();
-    GLint status = 0;
+    err = glGetError();
+    status = 0;
     glGetProgramiv(oProg->program, GL_LINK_STATUS, &status);
-    if (err != GL_NO_ERROR || !status) {
-        glGetProgramInfoLog(oProg->fshader, sizeof(tmplog), NULL, tmplog);
-        snprintf(error, esize, "program error: %s", tmplog);
+    if (status != GL_TRUE || err != GL_NO_ERROR) {
+        glGetProgramInfoLog(oProg->program, sizeof(tmplog), &length, tmplog);
+        snprintf(error, esize, "program error: (%x) %.*s", err, (int)length, tmplog);
         return -1;
     }
 
     oProg->v_pos = glGetAttribLocation(oProg->program, "v_pos");
     oProg->v_tex = glGetAttribLocation(oProg->program, "v_tex");
     oProg->v_color = glGetAttribLocation(oProg->program, "v_color");
-    oProg->g_color = glGetAttribLocation(oProg->program, "g_color");
-    oProg->g_tex = glGetAttribLocation(oProg->program, "g_tex");
+    oProg->g_transform = glGetUniformLocation(oProg->program, "g_transform");
+    oProg->g_color = glGetUniformLocation(oProg->program, "g_color");
+    oProg->g_tex = glGetUniformLocation(oProg->program, "g_tex");
+    if (oProg->g_tex != (unsigned int)-1) {
+        glUniform1i(oProg->g_tex, 0);
+    }
 
     return oProg->program;
 }
@@ -231,6 +259,7 @@ void gg_clear_program(Program *iProc) {
     glDeleteShader(iProc->vshader);
     glDeleteShader(iProc->fshader);
     memset(iProc, 0, sizeof(*iProc));
+    boundProgram = (unsigned int)-1;
 }
 
 
@@ -361,11 +390,12 @@ void gg_allocate_texture(void const *data, unsigned int width, unsigned int heig
     for (unsigned int m = 0; m != oTex->miplevels; ++m) {
         oTex->mipdata[m] = base;
         base = (unsigned char *)base + wh * 4;
+        wh >>= 2;
     }
 
     /* fill in image, if present */
     if (data) {
-        gg_update_texture(oTex, width * 4, 0, width, 0, height);
+        gg_update_texture(oTex, 0, width, 0, height);
     }
 }
 
@@ -407,15 +437,16 @@ static void mip_filter(Texture *tex, unsigned int ml, unsigned int left, unsigne
     }
 }
 
-void gg_update_texture(Texture *tex, unsigned int rowbytes, unsigned int left, unsigned int width, unsigned int top, unsigned int height) {
+void gg_update_texture(Texture *tex, unsigned int left, unsigned int width, unsigned int top, unsigned int height) {
     assert(tex->mipdata);
     glBindTexture(GL_TEXTURE_2D, tex->texture);
     unsigned int xformat = tex->format == 1 ? GL_ALPHA : tex->format == 3 ? GL_RGB : GL_RGBA;
-    unsigned int w = tex->width;
-    unsigned int h = tex->height;
+    left = 0;
+    top = 0;
+    width = tex->width;
+    height = tex->height;
     for (unsigned int i = 0; i < tex->miplevels; ++i) {
-        /* GLES 2.0 does not support UNPACK_ROW_LENGTH so upload the whole thing. */
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, xformat, GL_UNSIGNED_BYTE, tex->mipdata[i]);
+        glTexSubImage2D(GL_TEXTURE_2D, i, left, top, width, height, xformat, GL_UNSIGNED_BYTE, tex->mipdata[i]);
         if (i + 1 < tex->miplevels) {
             mip_filter(tex, i, left, top, width, height);
         }
@@ -430,6 +461,7 @@ void gg_update_texture(Texture *tex, unsigned int rowbytes, unsigned int left, u
 void gg_clear_texture(Texture *tex) {
     free(tex->mipdata);
     glDeleteTextures(1, &tex->texture);
+    boundTexture = (unsigned int)-1;
 }
 
 Texture const *gg_load_named_texture(char const *name, char *error, size_t esize) {
@@ -457,6 +489,300 @@ void gg_clear_named_textures() {
     }
     gNamedTextures.clear();
 }
+
+
+/* Meshes
+
+struct Mesh {
+    unsigned int vertexbuf;
+    unsigned int vertexsize;
+    unsigned int numvertices;
+    unsigned int indexbuf;
+    unsigned int numindices;
+    unsigned char desc_tex;
+    unsigned char desc_color;
+    unsigned char desc_normal;
+    unsigned char flags;
+};
+
+struct MeshDrawOp {
+    Program const *program;
+    Texture const *texture;
+    Mesh const *mesh;
+    float offset[2];
+    float color[4];
+};
+
+#define MESH_FLAG_DYNAMIC 0x1
+#define MESH_FLAG_COLOR_BYTES 0x2
+
+*/
+
+void gg_allocate_mesh(void const *mdata, unsigned int vertexbytes, unsigned int numvertices, unsigned short const *indices, unsigned int numindices, unsigned int tex_offset, unsigned int color_offset, Mesh *oMesh, unsigned int flags) {
+    memset(oMesh, 0, sizeof(*oMesh));
+    oMesh->vertexsize = vertexbytes;
+    oMesh->numvertices = 0;
+    oMesh->numindices = 0;
+    oMesh->desc_tex = tex_offset;
+    oMesh->desc_color = color_offset;
+    oMesh->flags = flags;
+    glGenBuffers(1, &oMesh->vertexbuf);
+    glGenBuffers(1, &oMesh->indexbuf);
+    gg_update_mesh(oMesh, mdata, 0, numvertices, indices, 0, numindices);
+}
+
+void gg_update_mesh(Mesh *mesh, void const *mdata, unsigned int fromvertex, unsigned int numvertices, unsigned short const *indices, unsigned int fromindex, unsigned int numindices) {
+    glBindBuffer(GL_ARRAY_BUFFER, mesh->vertexbuf);
+    if (fromvertex+numvertices > mesh->numvertices || !(mesh->flags & MESH_FLAG_DYNAMIC)) {
+        glBufferData(GL_ARRAY_BUFFER, mesh->vertexsize * mesh->numvertices, mdata, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
+        mesh->numvertices = fromvertex + numvertices;
+    } else {
+        glBufferSubData(GL_ARRAY_BUFFER, mesh->vertexsize * fromvertex, mesh->vertexsize * numvertices, mdata);
+    }
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->indexbuf);
+    if (fromindex+numindices > mesh->numindices || !(mesh->flags & MESH_FLAG_DYNAMIC)) {
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->numindices * 2, indices, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
+        mesh->numindices = fromindex + numindices;
+    } else {
+        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 2 * fromindex, 2 * numindices, indices);
+    }
+}
+
+void gg_clear_mesh(Mesh *mesh) {
+    glDeleteBuffers(1, &mesh->vertexbuf);
+    glDeleteBuffers(1, &mesh->indexbuf);
+    memset(mesh, 0, sizeof(*mesh));
+}
+
+template<typename T> void put(T t, unsigned int offset, void *data) {
+    memcpy((char *)data + offset, &t, sizeof(t));
+}
+
+static bool parse_mesh(std::string const &mdata, Mesh *mesh) {
+    std::istringstream ss(mdata);
+    unsigned int version = 0;
+    ss >> version;
+    if (version != 1) {
+        fprintf(stderr, "Bad mesh version %u\n", version);
+        return false;
+    }
+    unsigned int flags = 0;
+    ss >> flags;
+    if (flags >= MESH_FLAG_MAX) {
+        fprintf(stderr, "Bad mesh flags %u\n", flags);
+        return false;
+    }
+    unsigned int vsize = 0;
+    ss >> vsize;
+    if (vsize > 64) {
+        fprintf(stderr, "Bad vertex size %u\n", vsize);
+        return false;
+    }
+    unsigned int desc_tex = 0;
+    ss >> desc_tex;
+    if (desc_tex > vsize-8) {
+        fprintf(stderr, "Bad texture offset %u\n", desc_tex);
+        return false;
+    }
+    unsigned int desc_color = 0;
+    ss >> desc_color;
+    if (desc_color > vsize-4) {
+        fprintf(stderr, "Bad color offset %u\n", desc_color);
+        return false;
+    }
+    if (desc_color && !(flags & MESH_FLAG_COLOR_BYTES)) {
+        fprintf(stderr, "Colors can only be bytes\n");
+        return false;
+    }
+    unsigned int vcount = 0;
+    ss >> vcount;
+    if (vcount < 3 || vcount > 65535) {
+        fprintf(stderr, "Bad vertex count %u\n", vcount);
+        return false;
+    }
+    unsigned char vdata[64] = { 0 };
+    std::vector<char> vertexdata;
+    for (unsigned int i = 0; i != vcount; ++i) {
+        float x, y;
+        ss >> x;
+        ss >> y;
+        put(x, 0, vdata);
+        put(y, 4, vdata);
+        if (desc_tex) {
+            float u, v;
+            ss >> u;
+            ss >> v;
+            put(u, desc_tex, vdata);
+            put(v, desc_tex+4, vdata);
+        }
+        if (desc_color) {
+            uint32_t c;
+            ss >> c;
+            put(c, desc_color, vdata);
+        }
+        vertexdata.insert(vertexdata.end(), vdata, &vdata[vsize]);
+        if (ss.fail()) {
+            fprintf(stderr, "Error reading vertex data\n");
+            return false;
+        }
+    }
+    unsigned int icnt = 0;
+    ss >> icnt;
+    if ((icnt == 0) || (icnt > 1024000) || (icnt % 3)) {
+        fprintf(stderr, "Bad index count %u\n", icnt);
+        return false;
+    }
+    std::vector<unsigned short> indexdata;
+    for (unsigned int ix = 0; ix != icnt; ++ix) {
+        unsigned int i;
+        ss >> i;
+        if (i >= vcount) {
+            fprintf(stderr, "Bad index value %u at index %u\n", i, ix);
+            return false;
+        }
+        if (ss.fail()) {
+            fprintf(stderr, "Error reading index data\n");
+            return false;
+        }
+        indexdata.push_back(i);
+    }
+    gg_allocate_mesh(&vertexdata[0], vsize, vcount, &indexdata[0], icnt, desc_tex, desc_color, mesh, MESH_FLAG_COLOR_BYTES);
+    return true;
+}
+
+Mesh const *gg_load_named_mesh(char const *name, char *error, size_t esize) {
+    std::string path(std::string("data/") + name + ".mesh");
+    auto ptr = gNamedMeshes.find(path);
+    if (ptr != gNamedMeshes.end()) {
+        return &(*ptr).second;
+    }
+    std::string mdata;
+    if (!load_text(path, &mdata)) {
+        snprintf(error, esize, "Could not find mesh file: %s", path.c_str());
+        return NULL;
+    }
+    Mesh m;
+    if (!parse_mesh(mdata, &m)) {
+        snprintf(error, esize, "Could not parse mesh: %s", path.c_str());
+        return NULL;
+    }
+    gNamedMeshes[path] = m;
+    return &gNamedMeshes[path];
+}
+
+void gg_clear_named_meshes() {
+    for (auto &p : gNamedMeshes) {
+        gg_clear_mesh(&p.second);
+    }
+    gNamedMeshes.clear();
+}
+
+static void use(Program const *program) {
+    if (program->program != boundProgram) {
+        boundProgram = program->program;
+        glUseProgram(boundProgram);
+    }
+}
+
+static void use(Texture const *texture) {
+    if (boundTexture != texture->texture) {
+        boundTexture = texture->texture;
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture->texture);
+    }
+}
+
+static void use(Mesh const *mesh, Program const *program) {
+    glBindBuffer(GL_ARRAY_BUFFER, mesh->vertexbuf);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, mesh->vertexsize, (GLvoid *)0);
+    if (mesh->desc_tex && program->v_tex != (unsigned int)-1) {
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, mesh->vertexsize, (GLvoid *)(ptrdiff_t)mesh->desc_tex);
+    } else {
+        glDisableVertexAttribArray(1);
+    }
+    if (mesh->desc_color && program->v_color != (unsigned int)-1) {
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 4, (mesh->flags & MESH_FLAG_COLOR_BYTES) ? GL_UNSIGNED_BYTE : GL_FLOAT,
+                (mesh->flags & MESH_FLAG_COLOR_BYTES) ? GL_TRUE : GL_FALSE, mesh->vertexsize, (GLvoid *)(ptrdiff_t)mesh->desc_color);
+    } else {
+        glDisableVertexAttribArray(2);
+    }
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->indexbuf);
+}
+
+
+void gg_set_program_transform(Program const *program, float const *transform) {
+    if (program->g_transform != (unsigned int)-1) {
+        use(program);
+        glUniformMatrix4fv(program->g_transform, 1, GL_FALSE, transform);
+    }
+}
+
+void gg_set_named_program_transforms(float const *transform) {
+    for (auto const &progs : gNamedPrograms) {
+        gg_set_program_transform(&progs.second, transform);
+    }
+}
+
+void gg_draw_mesh(MeshDrawOp const *draw) {
+    use(draw->program);
+    if (draw->transform) {
+        gg_set_program_transform(draw->program, draw->transform);
+    }
+    use(draw->texture);
+    use(draw->mesh, draw->program);
+    if (draw->program->g_color != (unsigned int)-1) {
+        glUniform4fv(draw->program->g_color, 1, draw->color);
+    }
+    glDrawElements(GL_TRIANGLES, draw->mesh->numindices, GL_UNSIGNED_SHORT, (GLvoid *)0);
+}
+
+void gg_get_gui_transform(float *oMatrix) {
+    memset(oMatrix, 0, 16*sizeof(float));
+    oMatrix[0] = 2.0f / gCtx.screen_width;
+    oMatrix[5] = 2.0f / gCtx.screen_height;
+    oMatrix[12] = -1.0f;
+    oMatrix[13] = -1.0f;
+    oMatrix[15] = 1.0f;
+}
+
+void gg_get_quad_transform(float left, float bottom, float width, float height, float *oMatrix) {
+    memset(oMatrix, 0, 16*sizeof(float));
+    oMatrix[0] = 2.0f * width / gCtx.screen_width;
+    oMatrix[5] = 2.0f * height / gCtx.screen_height;
+    oMatrix[12] = 2.0f / left - 1.0f;
+    oMatrix[13] = 2.0f / bottom - 1.0f;
+    oMatrix[15] = 1.0f;
+}
+
+void gg_draw_text(float x, float y, float size, char const *text) {
+    std::vector<TTVertex> vec;
+    std::vector<unsigned short> ind;
+    size_t len = strlen(text);
+    if (!len) {
+        return;
+    }
+    vec.resize(len * 4);
+    ind.resize(len * 6);
+    int n = draw_truetype(text, &x, &y, &vec[0], (int)len);
+    if (!n) {
+        return;
+    }
+    unsigned short o = 0;
+    for (size_t i = 0; i != len; i++) {
+        ind[o++] = i*4;
+        ind[o++] = i*4+1;
+        ind[o++] = i*4+2;
+        ind[o++] = i*4+2;
+        ind[o++] = i*4+3;
+        ind[o++] = i*4;
+    }
+    gg_update_mesh(&fontMesh, &vec[0], 0, n, &ind[0], 0, len*6);
+    MeshDrawOp mdo = { &fontProgram, &fontTexture, &fontMesh, guiTransform, { 1, 1, 1, 1 } };
+    gg_draw_mesh(&mdo);
+}
+
 
 
 void service_mouse(Context *ctx) {

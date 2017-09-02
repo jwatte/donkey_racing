@@ -50,6 +50,7 @@ int draw_truetype(char const *str, float *x, float *y, TTVertex *vert, int maxve
             vert->u = q.s1; vert->v = q.t0; vert->x = q.x1; vert->y = q.y1; ++vert;
             vert->u = q.s0; vert->v = q.t0; vert->x = q.x0; vert->y = q.y1; ++vert;
             maxvert -= 4;
+            ret += 4;
         }
         ++str;
     }

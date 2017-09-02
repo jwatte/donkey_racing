@@ -6,10 +6,10 @@ extern "C" {
 #endif
 
 typedef struct TTVertex {
-    float u;
-    float v;
     float x;
     float y;
+    float u;
+    float v;
 } TTVertex;
 
 /* Load a given font into a bitmap. Note: character data is stored in statics, 

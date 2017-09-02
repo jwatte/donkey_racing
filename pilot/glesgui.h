@@ -27,6 +27,7 @@ struct Program {
     unsigned int v_pos;
     unsigned int v_tex;
     unsigned int v_color;
+    unsigned int g_transform;
     unsigned int g_color;
     unsigned int g_tex;
 };
@@ -58,7 +59,7 @@ struct Texture {
  */
 void gg_allocate_texture(void const *data, unsigned int width, unsigned int height, unsigned int mipmaps, unsigned int format, Texture *oTex);
 /* given texture data for the top mipmap, update the texture images */
-void gg_update_texture(Texture *tex, unsigned int rowbytes, unsigned int left, unsigned int width, unsigned int top, unsigned int height);
+void gg_update_texture(Texture *tex, unsigned int left, unsigned int width, unsigned int top, unsigned int height);
 /* dispose an allocated texture */
 void gg_clear_texture(Texture *tex);
 /* load a texture on disk, and return texture pointer. Uses cache of loaded objects. Loaded 
@@ -67,6 +68,43 @@ void gg_clear_texture(Texture *tex);
 Texture const *gg_load_named_texture(char const *name, char *error, size_t esize);
 /* blow away the loaded texture cache, invalidating all the textures loaded */
 void gg_clear_named_textures();
+
+
+
+struct Mesh {
+    unsigned int vertexbuf;
+    unsigned int vertexsize;
+    unsigned int numvertices;
+    unsigned int indexbuf;
+    unsigned int numindices;
+    unsigned char desc_tex;
+    unsigned char desc_color;
+    unsigned char _desc_r;
+    unsigned char flags;
+};
+
+#define MESH_FLAG_DYNAMIC 0x1
+#define MESH_FLAG_COLOR_BYTES 0x2
+#define MESH_FLAG_MAX 0x4
+
+void gg_allocate_mesh(void const *mdata, unsigned int vertexbytes, unsigned int numvertices, unsigned short const *indices, unsigned int numindices, unsigned int tex_offset, unsigned int color_offset, Mesh *oMesh, unsigned int flags);
+void gg_update_mesh(Mesh *mesh, void const *mdata, unsigned int fromvertex, unsigned int numvertices, unsigned short const *indices, unsigned int fromindex, unsigned int numindices);
+void gg_clear_mesh(Mesh *mesh);
+Mesh const *gg_load_named_mesh(char const *name, char *error, size_t esize);
+void gg_clear_named_meshes();
+
+struct MeshDrawOp {
+    Program const *program;
+    Texture const *texture;
+    Mesh const *mesh;
+    float const *transform;
+    float color[4];
+};
+void gg_set_program_transform(Program const *program, float const *transform);
+void gg_set_named_program_transforms(float const *transform);
+void gg_draw_mesh(MeshDrawOp const *draw);
+void gg_get_gui_transform(float *oMatrix);
+void gg_get_quad_transform(float left, float bottom, float width, float height, float *oMatrix);
 
 #if defined(__cplusplus)
 }

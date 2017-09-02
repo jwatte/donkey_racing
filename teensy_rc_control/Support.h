@@ -2,6 +2,7 @@
 #define Support_h
 
 #include <math.h>
+#include <string.h>
 
 /* Call this to freeze up the sketch and blink the LED, 
  * and occasionally print an error message to serial USB.
@@ -28,12 +29,12 @@ struct DebugVal {
   //  name should be a string literal
   char const *name;
   //  Don't poke at the _ptr field
-  DebugVal const *_ptr;
+  DebugVal *_ptr;
   //  float and int values fit in 12 bytes
   char value[16];
 };
 template<size_t Mx> struct DebugValStr : public DebugVal {
-  char extra[constexpr Mx > sizeof(value) ? (Mx - sizeof(value)) : 0];
+  char extra[Mx > sizeof(value) ? (Mx - sizeof(value)) : 0];
   void set(char const *str) {
     strncpy(value, str, Mx);
     value[Mx-1] = 0;
