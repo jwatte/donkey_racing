@@ -1,8 +1,12 @@
 #include "glesgui.h"
+#include "RaspiCapture.h"
 
 #include <stdio.h>
 #include <string.h>
-
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <time.h>
 
 char errbuf[256];
 
@@ -12,8 +16,6 @@ void do_click(int mx, int my, int btn, int st) {
 void do_move(int x, int y, unsigned int btns) {
 }
 
-Program const *guiProgram;
-
 void do_draw() {
     gg_draw_text(100, 100, 1, "Hello, world!");
 }
@@ -21,13 +23,30 @@ void do_draw() {
 void do_idle() {
 }
 
-int init() {
-    guiProgram = gg_compile_named_program("gui", errbuf, sizeof(errbuf));
-    if (!guiProgram) {
-        fprintf(stderr, "Failed to compile GUI program:\n%s\n", errbuf);
-        return -1;
+int nframes = 0;
+uint64_t start;
+
+void buffer_callback(void *data, size_t size, void *cookie) {
+    ++nframes;
+    if (!(nframes & 0x3f)) {
+        uint64_t stop = get_microseconds();
+        fprintf(stderr, "%d frames in %.3f seconds; %.1f fps\n",
+                nframes, (stop - start) * 1e-6, (0x40)/((stop-start)*1e-6));
+        start = stop;
     }
-    return 0;
+}
+
+void setup_run() {
+    mkdir("/var/tmp/pilot", 0775);
+    static char path[156];
+    time_t t;
+    time(&t);
+    sprintf(path, "/var/tmp/pilot/capture-%ld", (long)t);
+    CaptureParams cap = {
+        640, 480, path, &buffer_callback, NULL
+    };
+    setup_capture(&cap);
+    set_recording(true);
 }
 
 void enum_errors(char const *err, void *p) {
@@ -79,12 +98,10 @@ int main(int argc, char const *argv[]) {
         return 0;
     }
     if (argc != 2 || strcmp(argv[1], "--test")) {
-        if (init()) {
-            return -1;
-        }
         gg_onmousebutton(do_click);
         gg_onmousemove(do_move);
         gg_ondraw(do_draw);
+        setup_run();
         gg_run(do_idle);
     }
     int num = 0;
