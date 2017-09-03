@@ -102,13 +102,6 @@ A `request_id` of 0 means the sender does not care about ACK/NAK.
 
 Requests are:
 
-    - IDENTIFY              ; Tell remote end to send description of 
-                              itself as the root endpoint (response is
-                              IDENTIFICATION.) It is correct to think of 
-                              IDENTIFY as a DESCRIBE for the root of the 
-                              tree of endpoints/properties, which is the 
-                              node itself.
-                              0x0
     - DESCRIBE Address      ; Tell remote end to send description of 
                               the given address (response is DESCRIPTION.)
                               0x81
@@ -129,15 +122,22 @@ Requests are:
     - WRITEDATA Address Data
                             ; Write data to an address
                               0xC7
-    - IDENTIFICATION Struct ; Description of the node
-                              0x48
     - DESCRIPTION Address Struct
                             ; Description of an endpoint or a property
-                              0xC9
-    - ERROR Struct          ; Some error has occurred
-                              0x4A
+                              0xC8
+    - ERROR Struct          ; Some bad error has occurred, and any state 
+                              that has been established in the protocol 
+                              should no longer be relied upon.
+                              0x49
     - NOTE String           ; Something of note to perhaps log / tell user
-                              0x4B
+                              0x4A
+
+    - REQUEST_ADDR          ; Set this bit if the request contains an 
+                              address (already included in the above values.)
+                              0x80
+    - REQUEST_DATA          ; Set this bit if the request contains a data 
+                              element (already included in the above values.)
+                              0x40
     - REQUEST_ID            ; Set this bit if the request byte is followed
                               by a request ID, which implies a desire for 
                               NAK/ACK response to this request.
@@ -158,7 +158,7 @@ request code that the node doesn't understand, the logic looks like this:
         if (rcode & 0x80) {
             do {
               ++ptr;
-            } while (ptr[-1] & 0x80); /* skip an address */
+            } while ((ptr[-1] != 0xff) && (ptr[-1] & 0x80)); /* skip an address */
         }
         if (rcode & 0x40) {
             ptr = skip_typed_data(ptr);
@@ -182,6 +182,12 @@ property identifier, for a total maximum address size of 4 bytes.
 Where addresses are used in the control protocol above, they are not 
 prefixed by a type id. Where addresses are exposed as properties (if 
 at all,) they are prefixed by a type id.
+
+The special "sub-endpoint" 0xFF refers to the endpoint itself, and 
+terminates the address. This means an endpoint can have 128 
+sub-properties and 127 sub-endpoints. This also means that the address
+consisting of a single byte 0xFF references the "root endpoint" of the 
+node itself.
 
 
 Data Types
@@ -211,24 +217,25 @@ Atomic Types
     - signed long (8 bytes, little-endian) (0xB)
     - float32 (4 bytes, little-endian) (0xC)
     - float64 (8 bytes, little-endian) (0xD)
+    - address (N bytes, the last of which is 0xFF or has bit 0x80 clear) (0xE)
 
 Aggregate Types
 ---------------
 
     - Single value (0x0)
-    - 2-tuples of each of the above (0x10)
-    - 3-tuples of each of the above (0x20)
-    - 4-tuples of each of the above (0x30)
-    - 6-tuples of each of the above (0x40)
-    - 8-tuples of each of the above (0x50)
-    - 9-tuples of each of the above (0x60)
-    - 12-tuples of each of the above (0x70)
-    - 16-tuples of each of the above (0x80)
-    - arrays of maximum 255 length of each of the above (0x90)
-    - arrays of maximum 65535 length of each of the above (0xA0)
+    - 2-tuples of each of the above (0x10)      ; 2D vector
+    - 3-tuples of each of the above (0x20)      ; 3D vector
+    - 4-tuples of each of the above (0x30)      ; quaternion
+    - 6-tuples of each of the above (0x40)      ; 2x3 matrix
+    - 8-tuples of each of the above (0x50)      ; 2x4 matrix
+    - 9-tuples of each of the above (0x60)      ; 3x3 matrix
+    - 12-tuples of each of the above (0x70)     ; 3x4 matrix
+    - 16-tuples of each of the above (0x80)     ; 4x4 matrix
+    - arrays of maximum 255 elements of each of the above (0x90)
+    - arrays of maximum 65535 elements of each of the above (0xA0)
     - A structure with up to 255 members (0xFF)
 
-The data type is prefixed each property value sent over the wire. This 
+The data type prefixes each property value sent over the wire. This 
 is potentially redundant compared to a protocol where the node has to 
 first introspect the endpoints it wants to work with, but it is much 
 more robust and easier to work with in practice, and thus worth the 
@@ -246,21 +253,38 @@ a total encoded size of 50 bytes. However, an array of string, or
 array of binary, will re-encode the length of each sub-string/binary, 
 because they may be of different length.
 
+For example, an array of signed shorts with max length <= 255, and
+currently containing nothing (empty) would be sent as: `0x97` `0x00`
 
-The null type is a special case; it is always encoded as 0 and there 
-are no aggregates of null (this wouldn't make sense!)
+As another example, an array with max length <= 255 of strings,
+containing the two strings `"hello" and `"world!"`, would be sent as:
+`0x91` `0x02` `0x05` `hello` `0x06` `world!`
+
+Finally, a structure containing a 3-tuple of float32 and a 4-tuple of 
+float32, would be encoded as:
+`0xFF` `0x02` `0x2C` `<X>` `<Y>` `<Z>` `0x3C` `<X>` `<Y>` `<Z>` `<W>` 
+where `<X>` and friends are 4-byte `float` values in little-endian 
+format.
+
+
+The null type is a special case; it is always encoded as `0x00` and
+there are no aggregates of null (this wouldn't make sense!) Whether a 
+particular property is nullable or not is not knowable other than by 
+convention. Most properties are not nullable, and empty arrays or 
+empty strings should be represented as zero-element items, not as 
+nulls.
 
 The "struct" type is also a special case; it is always encoded as 0xff 
 and is followed by a byte of the number of fields in the struct. Each 
 field is then encoded as normal.
 
 Typeids do not include the length or contents of values. Typeids are 
-returned from introspection calls (IDENTIFY and DESCRIBE.) Introspecting 
-a struct will not tell you how many fields are in the struct, nor what 
-their types are.  Introspecting an array will not tell you how many 
-elements are in the array. (There is a separate field in the introspection 
-return struct that actually does tell you, but that's not part of the type
-code.)
+returned from introspection calls (DESCRIBE.) Introspecting a struct
+will not tell you how many fields are in the struct, nor what their
+types are.  Introspecting an array will not tell you how many elements
+are in the array. (There is a separate field in the introspection
+return struct that actually does tell you, but that's not part of the
+type code.)
 
 
 Data type encoding
@@ -326,42 +350,6 @@ identifiers might be `PowerOn` or `roboclaw_81` or `steeringpin3". Configuration
 will then attempt to parse compound names like "PWM.motorControl.neutral_value" 
 into endpoint and parameter names (hence, don't use spaces, periods, slashes, or 
 other punctuation in names.)
-
-
-Protocol definitions
-====================
-
-HEADER_BYTE0 = 0xAA
-HEADER_BYTE1 = 0x55
-
-TYPE_NULL 0x0
-TYPE_STRING 0x1
-TYPE_BINARY8 0x2
-TYPE_BINARY16 0x3
-TYPE_U8 0x4
-TYPE_S8 0x5
-TYPE_U16 0x6
-TYPE_S16 0x7
-TYPE_U32 0x8
-TYPE_S32 0x9
-TYPE_U64 0xA
-TYPE_S64 0xB
-TYPE_F32 0xC
-TYPE_F64 0xD
-
-AGGREGATE_SINGLE 0x00
-AGGREGATE_TUPLE2 0x10
-AGGREGATE_TUPLE3 0x20
-AGGREGATE_TUPLE4 0x30
-AGGREGATE_TUPLE6 0x40
-AGGREGATE_TUPLE8 0x50
-AGGREGATE_TUPLE9 0x60
-AGGREGATE_TUPLE12 0x70
-AGGREGATE_TUPLE16 0x80
-AGGREGATE_ARRAY8 0x90
-AGGREGATE_ARRAY16 0xA0
-AGGREGATE_STRUCTURE 0xFF
-
 
 
 Semantics
