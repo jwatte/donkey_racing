@@ -103,8 +103,11 @@ struct MeshDrawOp {
 void gg_set_program_transform(Program const *program, float const *transform);
 void gg_set_named_program_transforms(float const *transform);
 void gg_draw_mesh(MeshDrawOp const *draw);
+void gg_draw_text(float x, float y, float size, char const *text);
 void gg_get_gui_transform(float *oMatrix);
 void gg_get_quad_transform(float left, float bottom, float width, float height, float *oMatrix);
+void gg_get_gl_errors(void (*func)(char const *error, void *cookie), void *cookie);
+void gg_break_gl_error(void (*func)(char const *error, void *cookie), void *cookie);
 
 #if defined(__cplusplus)
 }

@@ -5,7 +5,7 @@ CPPFILES:=$(wildcard *.cpp)
 C_O:=$(patsubst %.c,obj/%.o,$(CFILES))
 CPP_O:=$(patsubst %.cpp,obj/%.o,$(CPPFILES))
 LIBS:=-L/opt/vc/lib -lvcos -lmmal -lmmal_core -lmmal_util -lbcm_host -lpthread -Wl,--no-whole-archive -L/opt/vc/lib/ -lbrcmGLESv2 -lbrcmEGL
-OPT?=-O3
+OPT?=-O0
 CFLAGS:=-I ../moneypit_v/mpv_teensy -I/opt/vc/include -Wall -Werror $(OPT)
 CPPFLAGS:=$(CFLAGS) -std=gnu++11
 TOOL_O:=$(patsubst %,obj/%.o,$(TOOLS))
@@ -47,8 +47,8 @@ all:	pilot $(TOOLS) test_compile
 
 test_compile:	pilot
 	./pilot $(patsubst %,--compile %,$(sort $(VSHADERNAMES) $(FSHADERNAMES))) \
-		$(patsubst %,--loadtexture %,$(sort $(TEXTURENAMES))) \
-		$(patsubst %,--loadmesh %,$(sort $(MESHNAMES)))
+		$(patsubst %,--loadmesh %,$(sort $(MESHNAMES))) \
+		$(patsubst %,--loadtexture %,$(sort $(TEXTURENAMES)))
 
 pilot:	$(PILOT_O)
 	g++ -g -o $@ $(PILOT_O) $(LIBS) -std=gnu++11

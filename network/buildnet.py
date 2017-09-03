@@ -23,7 +23,9 @@ def AddInput(model, batch_size, db, db_type):
     return data, label
 
 # input: 2C * 221W * 93H
-def AddNetModel(model, data):
+# 72 milliseconds
+# removing the two convolution-step relus just removes 0.5 milliseconds
+def AddNetModelA(model, data):
     # 221x93 -> 218x90
     conv1 = brew.conv(model, data, 'conv1', dim_in=2, dim_out=8, kernel=4)
     # 218x90 -> 109x45
@@ -32,6 +34,7 @@ def AddNetModel(model, data):
     conv2 = brew.conv(model, pool1, 'conv2', dim_in=8, dim_out=16, kernel=4)
     # 106x42 -> 53x21
     pool2 = brew.max_pool(model, conv2, 'pool2', kernel=2, stride=2)
+#    relu2 = pool2
     relu2 = brew.relu(model, pool2, 'relu2')
     # 53x21 -> 50x18
     conv3 = brew.conv(model, relu2, 'conv3', dim_in=16, dim_out=32, kernel=4)
@@ -41,6 +44,7 @@ def AddNetModel(model, data):
     conv4 = brew.conv(model, pool3, 'conv4', dim_in=32, dim_out=64, kernel=4)
     # 22x6 -> 11x3
     pool4 = brew.max_pool(model, conv4, 'pool4', kernel=2, stride=2)
+#    relu4 = pool4
     relu4 = brew.relu(model, pool4, 'relu4')
     # 11x3 -> 128
     fc4 = brew.fc(model, relu4, 'fc4', dim_in=64*11*3, dim_out=128)
@@ -48,6 +52,27 @@ def AddNetModel(model, data):
     # 128 -> 2
     output = brew.fc(model, fc4, 'output', dim_in=128, dim_out=2)
     return output
+
+# 64 milliseconds
+def AddNetModelB(model, data):
+    # 221x93 -> 216x88
+    conv1 = brew.conv(model, data, 'conv1', dim_in=2, dim_out=10, kernel=6)
+    # 216x88 -> 54x22
+    pool1 = brew.max_pool(model, conv1, 'pool1', kernel=4, stride=4)
+    # 52x22 -> 48x18
+    conv2 = brew.conv(model, pool1, 'conv2', dim_in=10, dim_out=20, kernel=5)
+    # 48x18 -> 16x6
+    pool2 = brew.max_pool(model, conv2, 'pool2', kernel=3, stride=3)
+    relu2 = brew.relu(model, pool2, 'relu2')
+    # 16x6 -> 128
+    fc4 = brew.fc(model, relu2, 'fc4', dim_in=20*16*6, dim_out=128)
+    fc4 = brew.relu(model, fc4, fc4)
+    # 128 -> 2
+    output = brew.fc(model, fc4, 'output', dim_in=128, dim_out=2)
+    return output
+
+def AddNetModel(model, data):
+    return AddNetModelA(model, data)
 
 def AddAccuracy(model, output, label):
     accuracy = brew.accuracy(model, [output, label], "accuracy")

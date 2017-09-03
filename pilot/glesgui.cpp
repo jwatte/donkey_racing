@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include <set>
 
 #include "bcm_host.h"
 
@@ -21,7 +22,7 @@
 #include "EGL/egl.h"
 #include "EGL/eglext.h"
 
-#define check() assert(glGetError() == 0)
+#define check() _check_gl_error(__FILE__, __LINE__, __PRETTY_FUNCTION__)
 
 
 struct Context {
@@ -56,7 +57,53 @@ static std::map<std::string, Texture> gNamedTextures;
 static std::map<std::string, Mesh> gNamedMeshes;
 static unsigned int boundProgram = (unsigned int)-1;
 static unsigned int boundTexture = (unsigned int)-1;
+static bool g_running;
+static void (*gl_error_break)(char const *, void *);
+static void *gl_error_cookie;
+static std::set<std::string> errors;
 
+
+
+
+char const *gl_error_str(GLuint ui) {
+    switch (ui) {
+        case GL_NO_ERROR: return "GL_NO_ERROR";
+        case GL_INVALID_ENUM: return "GL_INVALID_ENUM";
+        case GL_INVALID_VALUE: return "GL_INVALID_VALUE";
+        case GL_INVALID_OPERATION: return "GL_INVALID_OPERATION";
+        case GL_OUT_OF_MEMORY: return "GL_OUT_OF_MEMORY";
+        default: return "???";
+    }
+}
+
+static void _check_gl_error(char const *file, int line, char const *function) {
+    GLuint err = glGetError();
+    while (err != 0) {
+        char buf[1024];
+        snprintf(buf, 1024, "%s:%d: %s: %s (0x%x)", file, line, function, gl_error_str(err), err);
+        buf[1023] = 0;
+        std::string s(buf);
+        bool is_new = errors.insert(s).second;
+        if (gl_error_break) {
+            gl_error_break(buf, gl_error_cookie);
+        } else {
+            fprintf(stderr, "%s\n", buf);
+            usleep(is_new ? 500000 : 50000);
+        }
+        err = glGetError();
+    }
+}
+
+void gg_get_gl_errors(void (*func)(char const *err, void *cookie), void *cookie) {
+    for (auto const &str : errors) {
+        func(str.c_str(), cookie);
+    }
+}
+
+void gg_break_gl_error(void (*func)(char const *error, void *cookie), void *cookie) {
+    gl_error_break = func;
+    gl_error_cookie = cookie;
+}
 
 
 static bool init_ogl(Context *ctx, unsigned int width, unsigned int height) {
@@ -182,13 +229,16 @@ static bool init_ogl(Context *ctx, unsigned int width, unsigned int height) {
     unsigned int bmheight;
     get_truetype_bitmap(&data, &bmwidth, &bmheight);
     gg_allocate_texture(data, bmwidth, bmheight, 0, 1, &fontTexture);
+    check();
     gg_allocate_mesh(NULL, 16, 0, NULL, 0, 8, 0, &fontMesh, MESH_FLAG_DYNAMIC);
+    check();
     gg_get_gui_transform(guiTransform);
     char err[128];
     if (!gg_compile_named_program("gui", err, 128)) {
         fprintf(stderr, "Can't load gui program: %s\n", err);
         return false;
     }
+    check();
 
     return true;
 }
@@ -239,6 +289,8 @@ int gg_compile_program(char const *vshader, char const *fshader, Program *oProg,
         snprintf(error, esize, "program error: (%x) %.*s", err, (int)length, tmplog);
         return -1;
     }
+    glUseProgram(oProg->program);
+    boundProgram = oProg->program;
 
     oProg->v_pos = glGetAttribLocation(oProg->program, "v_pos");
     oProg->v_tex = glGetAttribLocation(oProg->program, "v_tex");
@@ -246,8 +298,10 @@ int gg_compile_program(char const *vshader, char const *fshader, Program *oProg,
     oProg->g_transform = glGetUniformLocation(oProg->program, "g_transform");
     oProg->g_color = glGetUniformLocation(oProg->program, "g_color");
     oProg->g_tex = glGetUniformLocation(oProg->program, "g_tex");
+    check();
     if (oProg->g_tex != (unsigned int)-1) {
         glUniform1i(oProg->g_tex, 0);
+        check();
     }
 
     return oProg->program;
@@ -360,13 +414,13 @@ void gg_allocate_texture(void const *data, unsigned int width, unsigned int heig
     unsigned int iformat = format == 1 ? GL_ALPHA : format == 3 ? GL_RGB : GL_RGBA;
     unsigned int xformat = format == 1 ? GL_ALPHA : format == 3 ? GL_RGB : GL_RGBA;
     glTexImage2D(GL_TEXTURE_2D, 0, iformat, w, h, 0, xformat, GL_UNSIGNED_BYTE, NULL);
-    assert(!glGetError());
+    check();
     while (d > 1) {
         d--;
         w >>= 1;
         h >>= 1;
         glTexImage2D(GL_TEXTURE_2D, oTex->miplevels - d, iformat, w, h, 0, xformat, GL_UNSIGNED_BYTE, NULL);
-        assert(!glGetError());
+        check();
     }
 
     /* set filtering parameters */
@@ -374,7 +428,7 @@ void gg_allocate_texture(void const *data, unsigned int width, unsigned int heig
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, oTex->miplevels > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    assert(!glGetError());
+    check();
 
     /* allocate storage */
     size_t needed = oTex->miplevels * sizeof(void *);
@@ -447,6 +501,7 @@ void gg_update_texture(Texture *tex, unsigned int left, unsigned int width, unsi
     height = tex->height;
     for (unsigned int i = 0; i < tex->miplevels; ++i) {
         glTexSubImage2D(GL_TEXTURE_2D, i, left, top, width, height, xformat, GL_UNSIGNED_BYTE, tex->mipdata[i]);
+        check();
         if (i + 1 < tex->miplevels) {
             mip_filter(tex, i, left, top, width, height);
         }
@@ -455,12 +510,13 @@ void gg_update_texture(Texture *tex, unsigned int left, unsigned int width, unsi
         width = (width + 1) >> 1;
         height = (height + 1) >> 1;
     }
-    assert(!glGetError());
+    check();
 }
 
 void gg_clear_texture(Texture *tex) {
     free(tex->mipdata);
     glDeleteTextures(1, &tex->texture);
+    check();
     boundTexture = (unsigned int)-1;
 }
 
@@ -519,6 +575,7 @@ struct MeshDrawOp {
 */
 
 void gg_allocate_mesh(void const *mdata, unsigned int vertexbytes, unsigned int numvertices, unsigned short const *indices, unsigned int numindices, unsigned int tex_offset, unsigned int color_offset, Mesh *oMesh, unsigned int flags) {
+    check();
     memset(oMesh, 0, sizeof(*oMesh));
     oMesh->vertexsize = vertexbytes;
     oMesh->numvertices = 0;
@@ -528,6 +585,7 @@ void gg_allocate_mesh(void const *mdata, unsigned int vertexbytes, unsigned int 
     oMesh->flags = flags;
     glGenBuffers(1, &oMesh->vertexbuf);
     glGenBuffers(1, &oMesh->indexbuf);
+    check();
     gg_update_mesh(oMesh, mdata, 0, numvertices, indices, 0, numindices);
 }
 
@@ -536,21 +594,26 @@ void gg_update_mesh(Mesh *mesh, void const *mdata, unsigned int fromvertex, unsi
     if (fromvertex+numvertices > mesh->numvertices || !(mesh->flags & MESH_FLAG_DYNAMIC)) {
         glBufferData(GL_ARRAY_BUFFER, mesh->vertexsize * mesh->numvertices, mdata, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
         mesh->numvertices = fromvertex + numvertices;
+        check();
     } else {
         glBufferSubData(GL_ARRAY_BUFFER, mesh->vertexsize * fromvertex, mesh->vertexsize * numvertices, mdata);
+        check();
     }
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->indexbuf);
     if (fromindex+numindices > mesh->numindices || !(mesh->flags & MESH_FLAG_DYNAMIC)) {
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->numindices * 2, indices, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
         mesh->numindices = fromindex + numindices;
+        check();
     } else {
         glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 2 * fromindex, 2 * numindices, indices);
+        check();
     }
 }
 
 void gg_clear_mesh(Mesh *mesh) {
     glDeleteBuffers(1, &mesh->vertexbuf);
     glDeleteBuffers(1, &mesh->indexbuf);
+    check();
     memset(mesh, 0, sizeof(*mesh));
 }
 
@@ -666,6 +729,7 @@ Mesh const *gg_load_named_mesh(char const *name, char *error, size_t esize) {
         snprintf(error, esize, "Could not parse mesh: %s", path.c_str());
         return NULL;
     }
+    check();
     gNamedMeshes[path] = m;
     return &gNamedMeshes[path];
 }
@@ -681,6 +745,7 @@ static void use(Program const *program) {
     if (program->program != boundProgram) {
         boundProgram = program->program;
         glUseProgram(boundProgram);
+        check();
     }
 }
 
@@ -689,26 +754,34 @@ static void use(Texture const *texture) {
         boundTexture = texture->texture;
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture->texture);
+        check();
     }
 }
 
 static void use(Mesh const *mesh, Program const *program) {
     glBindBuffer(GL_ARRAY_BUFFER, mesh->vertexbuf);
+    check();
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, mesh->vertexsize, (GLvoid *)0);
+    check();
     if (mesh->desc_tex && program->v_tex != (unsigned int)-1) {
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, mesh->vertexsize, (GLvoid *)(ptrdiff_t)mesh->desc_tex);
+        check();
     } else {
         glDisableVertexAttribArray(1);
+        check();
     }
     if (mesh->desc_color && program->v_color != (unsigned int)-1) {
         glEnableVertexAttribArray(2);
         glVertexAttribPointer(2, 4, (mesh->flags & MESH_FLAG_COLOR_BYTES) ? GL_UNSIGNED_BYTE : GL_FLOAT,
                 (mesh->flags & MESH_FLAG_COLOR_BYTES) ? GL_TRUE : GL_FALSE, mesh->vertexsize, (GLvoid *)(ptrdiff_t)mesh->desc_color);
+        check();
     } else {
         glDisableVertexAttribArray(2);
+        check();
     }
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->indexbuf);
+    check();
 }
 
 
@@ -716,6 +789,7 @@ void gg_set_program_transform(Program const *program, float const *transform) {
     if (program->g_transform != (unsigned int)-1) {
         use(program);
         glUniformMatrix4fv(program->g_transform, 1, GL_FALSE, transform);
+        check();
     }
 }
 
@@ -726,6 +800,7 @@ void gg_set_named_program_transforms(float const *transform) {
 }
 
 void gg_draw_mesh(MeshDrawOp const *draw) {
+    check();
     use(draw->program);
     if (draw->transform) {
         gg_set_program_transform(draw->program, draw->transform);
@@ -736,6 +811,7 @@ void gg_draw_mesh(MeshDrawOp const *draw) {
         glUniform4fv(draw->program->g_color, 1, draw->color);
     }
     glDrawElements(GL_TRIANGLES, draw->mesh->numindices, GL_UNSIGNED_SHORT, (GLvoid *)0);
+    check();
 }
 
 void gg_get_gui_transform(float *oMatrix) {
@@ -867,8 +943,6 @@ void gg_onmousebutton(void (*mousebuttonfn)(int x, int y, int button, int down))
 void gg_ondraw(void (*drawfn)()) {
     cb_draw = drawfn;
 }
-
-static bool g_running;
 
 void gg_set_quit_flag() {
     g_running = false;

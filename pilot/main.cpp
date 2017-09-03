@@ -7,7 +7,6 @@
 char errbuf[256];
 
 void do_click(int mx, int my, int btn, int st) {
-    gg_set_quit_flag();
 }
 
 void do_move(int x, int y, unsigned int btns) {
@@ -16,6 +15,7 @@ void do_move(int x, int y, unsigned int btns) {
 Program const *guiProgram;
 
 void do_draw() {
+    gg_draw_text(100, 100, 1, "Hello, world!");
 }
 
 void do_idle() {
@@ -28,6 +28,11 @@ int init() {
         return -1;
     }
     return 0;
+}
+
+void enum_errors(char const *err, void *p) {
+    (*(int *)p) += 1;
+    fprintf(stderr, "%s\n", err);
 }
 
 int main(int argc, char const *argv[]) {
@@ -82,6 +87,8 @@ int main(int argc, char const *argv[]) {
         gg_ondraw(do_draw);
         gg_run(do_idle);
     }
-    return 0;
+    int num = 0;
+    gg_get_gl_errors(enum_errors, &num);
+    return (num > 0) ? 1 : 0;
 }
 
