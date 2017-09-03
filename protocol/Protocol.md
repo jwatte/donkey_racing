@@ -404,6 +404,34 @@ units adds value. Using the ASCII variants rather than perhaps better Unicode
 specific values makes semantic interpretation by nodes easier, because there may 
 be many valid Unicode encodings of some particular unit glyph.
 
+Orientations and coordinates
+============================
+
+For some properties, there is a "chassis origin." This may be the center of gravity 
+of the chassis, or it may be the center of the bounding box of the chassis, or it 
+may be the center of the ground contacts of the chassis resting on the ground. For 
+the cases where it's not center-of-gravity, the chassis should expose a 
+CENTER_OF_GRAVITY semantic property that estimates the COG of the chassis at rest, 
+in chassis coordinates.
+
+Points are expressed preferentially as three-tuples of float32, which represent the
+X, Y and Z coordinates in order.
+
+The coordinate system of the chassis is X forward, Y right, Z down. This is a right 
+handed coordinate system. Rotations for "heading" are around the downwards-facing 
+Z axis, which means that rotations match the direction of a conventional Compass -- 
+pi/2 rotation from front means pointing to the right. A compass heading is expressed 
+as a single float32, assumed to be around the downwards-facing Z axis.
+
+Rotations are expressed preferentially as four-tuples of float32, which represent a 
+quatention in X, Y, Z, W order. (Note: about 45% of material on quaternions use the 
+distinct W, X, Y, Z order -- make sure to get it right!) The representation of a 
+nine-tuple of float32, representing a rotation matrix, is also acceptable where 
+necessary. Euler angles are advised against, because the order of rotation needs to 
+be specified, and the amount of "actual" rotation is non-linear, and the 
+representation singularities of "Gimbal lock" make them harder to reason correctly
+about.
+
 Endpoint Semantics
 ==================
 
@@ -449,7 +477,7 @@ Any endpoint semantic can exist under a MISC endpoint, although none of the spec
 sub-endpoints would exist directly under MISC (they are only valid under the endpoint 
 semantic type that defines them.)
 
-The property semantics defined under MISC include:
+The property semantics defined under MISC (and any other endpoint) include:
 
     - MISC_VALUE    - any type - any name - any value
     - MISC_DISABLE  - type uint8 - name "disable" - value 0 for an available endpoint, value 0xff for 
@@ -463,6 +491,9 @@ The property semantics defined under MISC include:
     - MISC_PRESSURE - type float32/uint16/uint32 (Pa) or uint8 (kPa), name "pressure"
     - MISC_ANGLE    - type float32 (Deg or rad), uint16 or uint32 (mDeg or mRad), name "angle"
     - MISC_POSITION - type 3-tuple of float32 (m), name "pos"
+    - MISC_ERROR    - type (some integer), no unit, name "error", if non-0, an error
+    - MISC_WARNING  - type (some integer), no unit, name "warning", if non-0, warnings, 
+                      if unsigned, is a bit field
 
 SERIAL Endpoint
 ---------------
@@ -573,7 +604,7 @@ implemented to make the encoder value more useful.
     - LOCOMOTION_CHASSISPOS - Name "pos", type 3-tuple of float32, unit "m", location of the 
                         encoder relative to the chassis origin.
     - LOCOMOTION_CHASSISDIR - Name "dir", type 3-tuple of float32, unit "m", direction of the 
-                        forward movement of the encoder.
+                        forward movement of the encoder in chassis space.
 
 POWER_CONTROL Endpoint
 ----------------------
