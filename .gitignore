@@ -16,5 +16,7 @@ stb
 ip_beacon/build
 pilot/obj
 pilot/pilot
+pilot/rifftoh264
 network/data
 network/proto
+network/some-lmdb
