@@ -11,7 +11,14 @@
 #include <fcntl.h>
 #include <time.h>
 
-char errbuf[256];
+static char errbuf[256];
+static FrameQueue guiFromNetwork(3, 0, 0, 0, 0);
+static Texture netTextureY;
+static Texture netTextureU;
+static int im_width;
+static int im_height;
+static int im_planes;
+static size_t im_size;
 
 void do_click(int mx, int my, int btn, int st) {
 }
@@ -19,17 +26,59 @@ void do_click(int mx, int my, int btn, int st) {
 void do_move(int x, int y, unsigned int btns) {
 }
 
+size_t framesDrawn;
+uint64_t framesStart;
+
 void do_draw() {
+    if (framesDrawn == 64) {
+        uint64_t stop = get_microseconds();
+        fprintf(stderr, "GUI fps: %.1f\n", framesDrawn * 1000000.0 / (stop - framesStart));
+        framesDrawn = 0;
+        framesStart = stop;
+    }
+    ++framesDrawn;
+}
+
+static unsigned char byte_from_float(float f) {
+    if (f < -1.0f) {
+        return 0.0f;
+    }
+    if (f < 0.0f) {
+        return f * 0.1f + 0.1f;
+    }
+    if (f < 1.0f) {
+        return f * 0.8f + 0.1f;
+    }
+    if (f < 2.0f) {
+        return f * 0.1f + 0.8f;
+    }
+    return 1.0f;
 }
 
 void do_idle() {
+    Frame *fr = guiFromNetwork.beginRead();
+    if (fr) {
+        float const *f = (float const *)fr->link_->data_;
+        unsigned char *t = (unsigned char *)netTextureY.mipdata[0];
+        for (int r = 0; r != im_height; ++r) {
+            t = (unsigned char *)netTextureY.mipdata[0] + netTextureY.width * r;
+            for (int c = 0; c != im_width; ++c) {
+                *t++ = byte_from_float(*f++);
+            }
+        }
+        for (int r = 0; r != im_height; ++r) {
+            t = (unsigned char *)netTextureU.mipdata[0] + netTextureU.width * r;
+            for (int c = 0; c != im_width; ++c) {
+                *t++ = byte_from_float(*f++);
+            }
+        }
+        fr->endRead();
+        gg_update_texture(&netTextureY, 0, im_width, 0, im_height);
+        gg_update_texture(&netTextureU, 0, im_width, 0, im_height);
+    }
 }
 
 
-int im_width;
-int im_height;
-int im_planes;
-size_t im_size;
 int nframes = 0;
 uint64_t start;
 static FrameQueue *networkQueue;
@@ -58,11 +107,16 @@ void buffer_callback(void *data, size_t size, void *cookie) {
 }
 
 void setup_run() {
-    if (!load_network("network")) {
+
+    if (!load_network("network", &guiFromNetwork)) {
         fprintf(stderr, "network could not be loaded\n");
         exit(1);
     }
     networkQueue = network_input_queue();
+
+    get_unwarp_info(&im_size, &im_width, &im_height, &im_planes);
+    gg_allocate_texture(NULL, im_width, im_height, 1, 1, &netTextureY);
+    gg_allocate_texture(NULL, im_width, im_height, 1, 1, &netTextureU);
 
     mkdir("/var/tmp/pilot", 0775);
 
@@ -70,10 +124,10 @@ void setup_run() {
     time_t t;
     time(&t);
     sprintf(path, "/var/tmp/pilot/capture-%ld", (long)t);
-    get_unwarp_info(&im_size, &im_width, &im_height, &im_planes);
     CaptureParams cap = {
         640, 480, path, &buffer_callback, NULL
     };
+    network_start();
     setup_capture(&cap);
 
     //set_recording(true);

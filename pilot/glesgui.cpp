@@ -253,7 +253,6 @@ static bool init_ogl(Context *ctx, unsigned int width, unsigned int height) {
     unsigned int bmwidth;
     unsigned int bmheight;
     get_truetype_bitmap(&data, &bmwidth, &bmheight);
-    stbi_write_png("/tmp/font.png", bmwidth, bmheight, 1, data, 0);
     gg_allocate_texture(data, bmwidth, bmheight, 0, 1, &fontTexture);
     check();
     gg_allocate_mesh(NULL, 16, 0, NULL, 0, 8, 0, &fontMesh, MESH_FLAG_DYNAMIC);
@@ -493,14 +492,16 @@ void gg_allocate_texture(void const *data, unsigned int width, unsigned int heig
 
     /* fill in image, if present */
     if (data) {
-        if (width != oTex->width) {
-            for (size_t r = 0; r != oTex->height; ++r) {
-                memcpy((char *)oTex->mipdata[0] + r * oTex->width * format,
-                        (char *)data + r * width * format,
-                        width * format);
+        if (data != oTex->mipdata[0]) {
+            if (width != oTex->width) {
+                for (size_t r = 0; r != oTex->height; ++r) {
+                    memcpy((char *)oTex->mipdata[0] + r * oTex->width * format,
+                            (char *)data + r * width * format,
+                            width * format);
+                }
+            } else {
+                memcpy(oTex->mipdata[0], data, oTex->width * height * format);
             }
-        } else {
-            memcpy(oTex->mipdata[0], data, oTex->width * height * format);
         }
         gg_update_texture(oTex, 0, width, 0, height);
     }

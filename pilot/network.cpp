@@ -12,9 +12,14 @@ static Pipeline *networkPipeline;
 static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *) {
     //  do the thing!
     usleep(25000);
+    if (dst) {
+        //  the other queue will be responsible for this buffer
+        dst->link(src);
+        src = NULL;
+    }
 }
 
-bool load_network(char const *name) {
+bool load_network(char const *name, FrameQueue *output) {
     if (!networkInput) {
         size_t size;
         int width, height, planes;
@@ -25,7 +30,7 @@ bool load_network(char const *name) {
         networkInput = new FrameQueue(2, size, width, height, 8);
         networkPipeline = new Pipeline(process_network);
         networkPipeline->connectInput(networkInput);
-        networkPipeline->start(NULL);
+        networkPipeline->connectOutput(output);
     }
     return true;
 }
@@ -33,5 +38,13 @@ bool load_network(char const *name) {
 FrameQueue *network_input_queue() {
     assert(networkInput != NULL);
     return networkInput;
+}
+
+void network_start() {
+    networkPipeline->start(NULL);
+}
+
+void network_stop() {
+    networkPipeline->stop();
 }
 

@@ -3,9 +3,10 @@
 
 class FrameQueue;
 
-bool load_network(char const *name);
-
+bool load_network(char const *name, FrameQueue *output);
 FrameQueue *network_input_queue();
+void network_start();
+void network_stop();
 
 #endif  //  network_h
 
