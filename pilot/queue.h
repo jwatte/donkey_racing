@@ -42,6 +42,7 @@ class FrameQueue {
 //  2 == YUV420
 //  3 == RGB
 //  4 == RGBA
+//  8 == 2*float
 struct Frame {
     public:
         Frame(size_t size);

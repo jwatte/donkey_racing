@@ -1,6 +1,7 @@
 #include "glesgui.h"
 #include "truetype.h"
 #include "../stb/stb_image.h"
+#include "../stb/stb_image_write.h"
 
 #include <stdio.h>
 #include <fcntl.h>
@@ -24,6 +25,16 @@
 
 #define check() _check_gl_error(__FILE__, __LINE__, __PRETTY_FUNCTION__)
 
+//  Define this to convert all texture formats to RGBA 
+//  to work around bugs.
+//#define ALWAYS_RGBA 1
+
+//  Define this to always use glTexImage2D() even when 
+//  glTexSubImage2D() would do.
+// #define ALWAYS_TEXIMAGE 1
+
+//  Define this to always use the highest MIP level
+#define ALWAYS_MIPLEVEL_0 1
 
 struct Context {
     uint32_t screen_width;
@@ -51,7 +62,7 @@ static void (*cb_mousebutton)(int, int, int, int);
 static void (*cb_draw)();
 static Texture fontTexture;
 static Mesh fontMesh;
-static Program fontProgram;
+static Program const *fontProgram;
 static float guiTransform[16];
 static std::map<std::string, Texture> gNamedTextures;
 static std::map<std::string, Mesh> gNamedMeshes;
@@ -76,8 +87,9 @@ char const *gl_error_str(GLuint ui) {
     }
 }
 
-static void _check_gl_error(char const *file, int line, char const *function) {
+static bool _check_gl_error(char const *file, int line, char const *function) {
     GLuint err = glGetError();
+    bool ok = true;
     while (err != 0) {
         char buf[1024];
         snprintf(buf, 1024, "%s:%d: %s: %s (0x%x)", file, line, function, gl_error_str(err), err);
@@ -90,8 +102,10 @@ static void _check_gl_error(char const *file, int line, char const *function) {
             fprintf(stderr, "%s\n", buf);
             usleep(is_new ? 500000 : 50000);
         }
+        ok = false;
         err = glGetError();
     }
+    return ok;
 }
 
 void gg_get_gl_errors(void (*func)(char const *err, void *cookie), void *cookie) {
@@ -108,7 +122,18 @@ void gg_break_gl_error(void (*func)(char const *error, void *cookie), void *cook
 
 static bool init_ogl(Context *ctx, unsigned int width, unsigned int height) {
 
+    fprintf(stderr, "bcm_host_init()\n");
     bcm_host_init();
+
+#if ALWAYS_MIPLEVEL_0
+    fprintf(stderr, "ALWAYS_MIPLEVEL_0 enabled\n");
+#endif
+#if ALWAYS_TEXIMAGE
+    fprintf(stderr, "ALWAYS_TEXIMAGE enabled\n");
+#endif
+#if ALWAYS_RGBA
+    fprintf(stderr, "ALWAYS_RGBA enabled\n");
+#endif
 
     memset(ctx, 0, sizeof(*ctx));
     ctx->mousefd = -1;
@@ -228,13 +253,14 @@ static bool init_ogl(Context *ctx, unsigned int width, unsigned int height) {
     unsigned int bmwidth;
     unsigned int bmheight;
     get_truetype_bitmap(&data, &bmwidth, &bmheight);
+    stbi_write_png("/tmp/font.png", bmwidth, bmheight, 1, data, 0);
     gg_allocate_texture(data, bmwidth, bmheight, 0, 1, &fontTexture);
     check();
     gg_allocate_mesh(NULL, 16, 0, NULL, 0, 8, 0, &fontMesh, MESH_FLAG_DYNAMIC);
     check();
     gg_get_gui_transform(guiTransform);
     char err[128];
-    if (!gg_compile_named_program("gui", err, 128)) {
+    if (!(fontProgram = gg_compile_named_program("gui", err, 128))) {
         fprintf(stderr, "Can't load gui program: %s\n", err);
         return false;
     }
@@ -395,32 +421,48 @@ void gg_allocate_texture(void const *data, unsigned int width, unsigned int heig
     while (h < height) {
         h <<= 1;
     }
-    unsigned int d = 1;
-    for (unsigned int ww = w, hh = h; ww > 4 && hh > 4; ww >>= 1, hh >>= 1) {
+    unsigned int d = 0;
+    for (unsigned int ww = w, hh = h; ww > 1 || hh > 1; ww >>= 1, hh >>= 1) {
         ++d;
     }
     if (mipmaps > d || mipmaps == 0) {
         mipmaps = d;
+    } else {
+        d = mipmaps;
     }
     oTex->width = w;
     oTex->height = h;
+#if ALWAYS_MIPLEVEL_0
+    d = mipmaps = 1;
+#endif
     oTex->miplevels = d;
-    oTex->format = 4;
+    oTex->format = format;
     oTex->mipdata = NULL;
 
     /* allocate VRAM */
     glGenTextures(1, &oTex->texture);
     glBindTexture(GL_TEXTURE_2D, oTex->texture);
+    boundTexture = (unsigned int)-1;
+#if ALWAYS_RGBA
+    unsigned int iformat = GL_RGBA;
+    unsigned int xformat = GL_RGBA;
+#else
     unsigned int iformat = format == 1 ? GL_ALPHA : format == 3 ? GL_RGB : GL_RGBA;
     unsigned int xformat = format == 1 ? GL_ALPHA : format == 3 ? GL_RGB : GL_RGBA;
+#endif
     glTexImage2D(GL_TEXTURE_2D, 0, iformat, w, h, 0, xformat, GL_UNSIGNED_BYTE, NULL);
-    check();
+    if (!check()) {
+        fprintf(stderr, "glTexImage2D(): iformat=%d, w=%d, h=%d, xformat=%d\n", iformat, w, h, xformat);
+    }
     while (d > 1) {
         d--;
         w >>= 1;
         h >>= 1;
         glTexImage2D(GL_TEXTURE_2D, oTex->miplevels - d, iformat, w, h, 0, xformat, GL_UNSIGNED_BYTE, NULL);
-        check();
+        if (!check()) {
+            fprintf(stderr, "glTexImage2D(): mip=%d, iformat=%d, w=%d, h=%d, xformat=%d\n",
+                    oTex->miplevels-d, iformat, w, h, xformat);
+        }
     }
 
     /* set filtering parameters */
@@ -434,21 +476,32 @@ void gg_allocate_texture(void const *data, unsigned int width, unsigned int heig
     size_t needed = oTex->miplevels * sizeof(void *);
     unsigned int wh = oTex->width * oTex->height;
     for (unsigned int m = 0; m != oTex->miplevels; ++m) {
-        needed += wh * 4;
+        needed += wh * format;
         wh >>= 2;
     }
-    oTex->mipdata = (void **)calloc(needed / 4, 4);
+    oTex->mipdata = (void **)calloc(needed / 4 + 1, 4);
+    fprintf(stderr, "texture %d images from 0x%lx to 0x%lx\n",
+            oTex->texture, (unsigned long)oTex->mipdata, (unsigned long)oTex->mipdata + needed);
     needed = oTex->miplevels * sizeof(void *);
     wh = oTex->width * oTex->height;
     void *base = oTex->mipdata + oTex->miplevels;
     for (unsigned int m = 0; m != oTex->miplevels; ++m) {
         oTex->mipdata[m] = base;
-        base = (unsigned char *)base + wh * 4;
+        base = (unsigned char *)base + wh * format;
         wh >>= 2;
     }
 
     /* fill in image, if present */
     if (data) {
+        if (width != oTex->width) {
+            for (size_t r = 0; r != oTex->height; ++r) {
+                memcpy((char *)oTex->mipdata[0] + r * oTex->width * format,
+                        (char *)data + r * width * format,
+                        width * format);
+            }
+        } else {
+            memcpy(oTex->mipdata[0], data, oTex->width * height * format);
+        }
         gg_update_texture(oTex, 0, width, 0, height);
     }
 }
@@ -491,16 +544,99 @@ static void mip_filter(Texture *tex, unsigned int ml, unsigned int left, unsigne
     }
 }
 
+
+#if ALWAYS_RGBA
+static size_t cu_bits_size;
+static void *cu_bits;
+
+static unsigned int get_pxsz(GLuint xformat) {
+    switch (xformat) {
+        case GL_LUMINANCE:
+        case GL_ALPHA:
+        case 1:
+            return 1;
+        case GL_RGB:
+        case 3:
+            return 3;
+        case GL_RGBA:
+        case 4:
+            return 4;
+        default:
+            assert(!"bad pixel format");
+            return 1;
+    }
+}
+
+static unsigned char get_r(unsigned char const *p, unsigned int pixel_size) {
+    return pixel_size == 1 ? 255 : p[0];
+}
+
+static unsigned char get_g(unsigned char const *p, unsigned int pixel_size) {
+    return pixel_size == 1 ? 255 : p[1];
+}
+
+static unsigned char get_b(unsigned char const *p, unsigned int pixel_size) {
+    return pixel_size == 1 ? 255 : p[2];
+}
+
+static unsigned char get_a(unsigned char const *p, unsigned int pixel_size) {
+    return pixel_size == 4 ? p[3] : pixel_size == 1 ? p[0] : 255;
+}
+
+static void gg_convert_upload(int miplevel, int left, int top, int width, int height, GLuint xformat, void const *idata) {
+    if (xformat != GL_RGBA && xformat != 4) {
+        unsigned int pixel_size = get_pxsz(xformat);
+        if (cu_bits_size < (size_t)(width * height * 4u)) {
+            cu_bits = ::realloc(cu_bits, width * height * 4);
+            if (!cu_bits) {
+                perror("\nOut of memory in cu_bits realloc()");
+                exit(1);
+            }
+            cu_bits_size = width * height * 4;
+        }
+        unsigned char *d = (unsigned char *)cu_bits;
+        unsigned char const *i = (unsigned char const *)idata;
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                d[0] = get_r(i, pixel_size);
+                d[1] = get_g(i, pixel_size);
+                d[2] = get_b(i, pixel_size);
+                d[3] = get_a(i, pixel_size);
+                d += 4;
+                i += pixel_size;
+            }
+        }
+        idata = cu_bits;
+    }
+#if ALWAYS_TEXIMAGE
+    fprintf(stderr, "glTexImage2D(%d,%d,0x%lx)\n", width, height, (unsigned long)idata);
+    glTexImage2D(GL_TEXTURE_2D, miplevel, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, idata);
+#else
+    glTexSubImage2D(GL_TEXTURE_2D, miplevel, left, top, width, height, GL_RGBA, GL_UNSIGNED_BYTE, idata);
+#endif
+}
+#endif
+
 void gg_update_texture(Texture *tex, unsigned int left, unsigned int width, unsigned int top, unsigned int height) {
     assert(tex->mipdata);
     glBindTexture(GL_TEXTURE_2D, tex->texture);
+    boundTexture = (unsigned int)-1;
     unsigned int xformat = tex->format == 1 ? GL_ALPHA : tex->format == 3 ? GL_RGB : GL_RGBA;
     left = 0;
     top = 0;
     width = tex->width;
     height = tex->height;
     for (unsigned int i = 0; i < tex->miplevels; ++i) {
+#if ALWAYS_RGBA
+        gg_convert_upload(i, left, top, width, height, xformat, tex->mipdata[i]);
+#else
+#if ALWAYS_TEXIMAGE
+        fprintf(stderr, "glTexImage2D(%d,%d,0x%lx)\n", width, height, (unsigned long)tex->mipdata[i]);
+        glTexImage2D(GL_TEXTURE_2D, i, xformat, width, height, 0, xformat, GL_UNSIGNED_BYTE, tex->mipdata[i]);
+#else
         glTexSubImage2D(GL_TEXTURE_2D, i, left, top, width, height, xformat, GL_UNSIGNED_BYTE, tex->mipdata[i]);
+#endif
+#endif
         check();
         if (i + 1 < tex->miplevels) {
             mip_filter(tex, i, left, top, width, height);
@@ -591,23 +727,21 @@ void gg_allocate_mesh(void const *mdata, unsigned int vertexbytes, unsigned int 
 
 void gg_update_mesh(Mesh *mesh, void const *mdata, unsigned int fromvertex, unsigned int numvertices, unsigned short const *indices, unsigned int fromindex, unsigned int numindices) {
     glBindBuffer(GL_ARRAY_BUFFER, mesh->vertexbuf);
-    if (fromvertex+numvertices > mesh->numvertices || !(mesh->flags & MESH_FLAG_DYNAMIC)) {
-        glBufferData(GL_ARRAY_BUFFER, mesh->vertexsize * mesh->numvertices, mdata, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
+    if (fromvertex+numvertices > mesh->numvertices || !(mesh->flags & MESH_FLAG_DYNAMIC) || !numvertices) {
         mesh->numvertices = fromvertex + numvertices;
-        check();
-    } else {
-        glBufferSubData(GL_ARRAY_BUFFER, mesh->vertexsize * fromvertex, mesh->vertexsize * numvertices, mdata);
+        glBufferData(GL_ARRAY_BUFFER, mesh->vertexsize * mesh->numvertices, NULL, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
         check();
     }
+    glBufferSubData(GL_ARRAY_BUFFER, mesh->vertexsize * fromvertex, mesh->vertexsize * numvertices, mdata);
+    check();
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->indexbuf);
-    if (fromindex+numindices > mesh->numindices || !(mesh->flags & MESH_FLAG_DYNAMIC)) {
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->numindices * 2, indices, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
+    if (fromindex+numindices > mesh->numindices || !(mesh->flags & MESH_FLAG_DYNAMIC) || !numindices) {
         mesh->numindices = fromindex + numindices;
-        check();
-    } else {
-        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 2 * fromindex, 2 * numindices, indices);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->numindices * 2, indices, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
         check();
     }
+    glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 2 * fromindex, 2 * numindices, indices);
+    check();
 }
 
 void gg_clear_mesh(Mesh *mesh) {
@@ -762,6 +896,7 @@ static void use(Mesh const *mesh, Program const *program) {
     glBindBuffer(GL_ARRAY_BUFFER, mesh->vertexbuf);
     check();
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, mesh->vertexsize, (GLvoid *)0);
+    glEnableVertexAttribArray(0);
     check();
     if (mesh->desc_tex && program->v_tex != (unsigned int)-1) {
         glEnableVertexAttribArray(1);
@@ -841,7 +976,7 @@ void gg_draw_text(float x, float y, float size, char const *text) {
     }
     vec.resize(len * 4);
     ind.resize(len * 6);
-    int n = draw_truetype(text, &x, &y, &vec[0], (int)len);
+    int n = draw_truetype(text, &x, &y, &vec[0], (int)len*4);
     if (!n) {
         return;
     }
@@ -855,7 +990,7 @@ void gg_draw_text(float x, float y, float size, char const *text) {
         ind[o++] = i*4;
     }
     gg_update_mesh(&fontMesh, &vec[0], 0, n, &ind[0], 0, len*6);
-    MeshDrawOp mdo = { &fontProgram, &fontTexture, &fontMesh, guiTransform, { 1, 1, 1, 1 } };
+    MeshDrawOp mdo = { fontProgram, &fontTexture, &fontMesh, guiTransform, { 1, 1, 1, 1 } };
     gg_draw_mesh(&mdo);
 }
 
@@ -958,6 +1093,8 @@ void gg_run(void (*idlefn)()) {
             idlefn();
         }
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glEnable(GL_BLEND);
         if (cb_draw) {
             cb_draw();
         }

@@ -1,5 +1,8 @@
 #include "glesgui.h"
 #include "RaspiCapture.h"
+#include "image.h"
+#include "queue.h"
+#include "network.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -17,36 +20,63 @@ void do_move(int x, int y, unsigned int btns) {
 }
 
 void do_draw() {
-    gg_draw_text(100, 100, 1, "Hello, world!");
 }
 
 void do_idle() {
 }
 
+
+int im_width;
+int im_height;
+int im_planes;
+size_t im_size;
 int nframes = 0;
 uint64_t start;
+static FrameQueue *networkQueue;
+static int numMissed;
+static int numProcessed;
 
 void buffer_callback(void *data, size_t size, void *cookie) {
+    Frame *f = networkQueue->beginWrite();
+    if (f == NULL) {
+        ++numMissed;
+    } else {
+        unwarp_image(data, f->data_);
+        f->endWrite();
+        ++numProcessed;
+    }
     ++nframes;
     if (!(nframes & 0x3f)) {
         uint64_t stop = get_microseconds();
-        fprintf(stderr, "%d frames in %.3f seconds; %.1f fps\n",
-                nframes, (stop - start) * 1e-6, (0x40)/((stop-start)*1e-6));
+        fprintf(stderr, "%d frames in %.3f seconds; %.1f fps; %.1f%% processing\n",
+                nframes, (stop - start) * 1e-6, (0x40)/((stop-start)*1e-6),
+                float(numProcessed) * 100.0f / (numProcessed+numMissed));
         start = stop;
+        numProcessed = 0;
+        numMissed = 0;
     }
 }
 
 void setup_run() {
+    if (!load_network("network")) {
+        fprintf(stderr, "network could not be loaded\n");
+        exit(1);
+    }
+    networkQueue = network_input_queue();
+
     mkdir("/var/tmp/pilot", 0775);
+
     static char path[156];
     time_t t;
     time(&t);
     sprintf(path, "/var/tmp/pilot/capture-%ld", (long)t);
+    get_unwarp_info(&im_size, &im_width, &im_height, &im_planes);
     CaptureParams cap = {
         640, 480, path, &buffer_callback, NULL
     };
     setup_capture(&cap);
-    set_recording(true);
+
+    //set_recording(true);
 }
 
 void enum_errors(char const *err, void *p) {

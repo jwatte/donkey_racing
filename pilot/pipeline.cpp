@@ -6,6 +6,8 @@
 
 Pipeline::Pipeline(void (*do_the_thing)(Pipeline *you, Frame *&srcData, Frame *&dstData, void *data))
     : processing_(do_the_thing)
+    , debug_(NULL)
+    , debugData_(NULL)
     , running_(false)
     , thread_(0)
     , mutex_(PTHREAD_MUTEX_INITIALIZER)
