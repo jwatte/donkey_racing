@@ -1,20 +1,21 @@
 #include "pipeline.h"
 #include "queue.h"
 #include <stdio.h>
+#include <string.h>
 #include "plock.h"
 
 
-Pipeline::Pipeline(void (*do_the_thing)(Pipeline *you, Frame *&srcData, Frame *&dstData, void *data))
+Pipeline::Pipeline(void (*do_the_thing)(Pipeline *you, Frame *&srcData, Frame *&dstData, void *data, int index))
     : processing_(do_the_thing)
     , debug_(NULL)
     , debugData_(NULL)
     , running_(false)
-    , thread_(0)
     , mutex_(PTHREAD_MUTEX_INITIALIZER)
     , cond_(PTHREAD_COND_INITIALIZER)
     , input_(NULL)
     , output_(NULL)
 {
+    memset(thread_, 0, sizeof(thread_));
 }
 
 Pipeline::~Pipeline() {
@@ -37,31 +38,45 @@ void Pipeline::connectOutput(FrameQueue *output) {
     output_ = output;
 }
 
-void Pipeline::start(void *data) {
+bool Pipeline::start(void *data, int nthread) {
+    if (nthread < 0 || nthread > MAX_THREADS) {
+        return false;
+    }
     PLock lock(mutex_);
-    if (!thread_) {
+    if (!thread_[0]) {
         data_ = data;
         running_ = true;
-        if (pthread_create(&thread_, NULL, thread_fn, this)) {
-            fprintf(stderr, "Pipeline: pthread_create() failed\n");
-            thread_ = 0;
-            running_ = false;
-            return;
+        for (int i = 0; i != nthread; ++i) {
+            start_[i].pipeline = this;
+            start_[i].index = i;
+            if (pthread_create(&thread_[i], NULL, thread_fn, &start_[i])) {
+                fprintf(stderr, "Pipeline: pthread_create() failed\n");
+                running_ = false;
+                pthread_cond_broadcast(&cond_);
+                memset(thread_, 0, sizeof(thread_));
+                return false;
+            }
         }
+        return true;
     }
+    return false;
 }
 
 void Pipeline::stop() {
-    if (thread_) {
+    if (thread_[0]) {
         {
             PLock lock(mutex_);
             running_ = false;
-            pthread_cond_signal(&cond_);
+            pthread_cond_broadcast(&cond_);
         }
-        void *x = NULL;
-        pthread_join(thread_, &x);
+        for (int i = 0; i != MAX_THREADS; ++i) {
+            void *x = NULL;
+            if (thread_[i]) {
+                pthread_join(thread_[i], &x);
+            }
+        }
         data_ = NULL;
-        thread_ = 0;
+        memset(thread_, 0, sizeof(thread_));
     }
 }
 
@@ -77,17 +92,21 @@ void Pipeline::setDebug(void (*func)(Pipeline *, Frame *, Frame *, void *), void
 
 
 void *Pipeline::thread_fn(void *that) {
-    reinterpret_cast<Pipeline *>(that)->thread();
+    ThreadStart *ts = reinterpret_cast<ThreadStart *>(that);
+    ts->pipeline->thread(ts->index);
     return NULL;
 }
 
-void Pipeline::thread() {
+void Pipeline::thread(int index) {
     fprintf(stderr, "starting Pipeline\n");
     while (running_) {
         Frame *srcData = NULL;
         Frame *dstData = NULL;
         {
             PLock lock(mutex_);
+            if (!running_) {
+                break;
+            }
             if (!input_ || input_->readEmpty()) {
                 pthread_cond_wait(&cond_, &mutex_);
             }
@@ -104,7 +123,7 @@ void Pipeline::thread() {
         if (srcData) {
             Frame *origSrc = srcData;
             Frame *origDst = dstData;
-            process(srcData, dstData);
+            process(srcData, dstData, index);
             if (debug_) {
                 void (*dbfn)(Pipeline *, Frame *, Frame *, void *) = NULL;
                 void *dd = NULL;
@@ -136,9 +155,9 @@ void Pipeline::react() {
     pthread_cond_signal(&cond_);
 }
 
-void Pipeline::process(Frame *&srcData, Frame *&dstData) {
+void Pipeline::process(Frame *&srcData, Frame *&dstData, int index) {
     if (processing_ != NULL) {
-        processing_(this, srcData, dstData, data_);
+        processing_(this, srcData, dstData, data_, index);
     }
 }
 

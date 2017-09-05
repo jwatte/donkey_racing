@@ -19,5 +19,6 @@ int setup_capture(CaptureParams const *cp);
 int stop_capture();
 void set_recording(bool rec);
 uint64_t get_microseconds();
+bool insert_metadata(uint16_t type, void const *data, uint16_t size);
 
 #endif  //  RaspiCapture_h

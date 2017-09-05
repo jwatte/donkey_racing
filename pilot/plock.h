@@ -1,6 +1,8 @@
 #if !defined(plock_h)
 #define plock_h
 
+#include <pthread.h>
+
 class PLock {
     public:
         PLock(pthread_mutex_t &mtx) : mtx_(mtx) {

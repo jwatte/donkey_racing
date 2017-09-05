@@ -9,7 +9,7 @@
 static FrameQueue *networkInput;
 static Pipeline *networkPipeline;
 
-static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *) {
+static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *, int index) {
     //  do the thing!
     usleep(25000);
     if (dst) {
@@ -27,7 +27,7 @@ bool load_network(char const *name, FrameQueue *output) {
         assert(planes == 2);
         assert(width == 149);
         assert(height == 59);
-        networkInput = new FrameQueue(2, size, width, height, 8);
+        networkInput = new FrameQueue(5, size, width, height, 8);
         networkPipeline = new Pipeline(process_network);
         networkPipeline->connectInput(networkInput);
         networkPipeline->connectOutput(output);
@@ -41,10 +41,12 @@ FrameQueue *network_input_queue() {
 }
 
 void network_start() {
-    networkPipeline->start(NULL);
+    networkPipeline->start(NULL, 3);
 }
 
 void network_stop() {
-    networkPipeline->stop();
+    if (networkPipeline) {
+        networkPipeline->stop();
+    }
 }
 

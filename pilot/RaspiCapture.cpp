@@ -44,6 +44,7 @@ extern "C" {
 
 #include "settings.h"
 #include "plock.h"
+#include "metrics.h"
 
 
 #define INLINE_HEADERS 1
@@ -143,19 +144,6 @@ struct RASPIVID_STATE_S
 };
 
 
-
-static int64_t base_time =  -1;
-
-uint64_t get_microseconds_base() {
-    return vcos_getmicrosecs64();
-}
-
-uint64_t get_microseconds() {
-    if (base_time == -1) {
-        base_time = vcos_getmicrosecs64();
-    }
-    return vcos_getmicrosecs64() - base_time;
-}
 
 
 /**
@@ -284,7 +272,7 @@ static bool write_rounded_chunk(FILE *f, char const *type, size_t size, void con
 }
 
 static bool write_timeinfo_chunk(FILE *f, char const *type, void const *data, size_t dataSize) {
-    uint64_t timestamp = get_microseconds();
+    uint64_t timestamp = metric::Collector::clock();
     if (!write_chunk_header(f, type, dataSize+8)) {
         return false;
     }
@@ -356,14 +344,22 @@ static FILE *open_filename(RASPIVID_STATE *pState, char *filename)
 
 pthread_mutex_t encoder_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-bool inject_timeinfo_data(PORT_USERDATA *pData, void const *data, size_t size) {
+bool inject_timeinfo_data(PORT_USERDATA *pData, uint16_t type, void const *data, size_t size) {
     PLock lock(encoder_mutex);
-    if (sizeof(pData->infobuf)-pData->infobuf_size >= size) {
-        memcpy(&pData->infobuf[pData->infobuf_size], data, size);
-        pData->infobuf_size += size;
+    if (sizeof(pData->infobuf)-pData->infobuf_size >= size+2) {
+        memcpy(&pData->infobuf[pData->infobuf_size], &type, 2);
+        memcpy(&pData->infobuf[pData->infobuf_size+2], data, size);
+        pData->infobuf_size += size + 2;
         return true;
     }
     return false;
+}
+
+bool insert_metadata(uint16_t type, void const *data, uint16_t size) {
+    if (!state.shouldRecord) {
+        return false;
+    }
+    return inject_timeinfo_data(&state.callback_data, type, data, size);
 }
 
 /**
@@ -384,9 +380,11 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
     PORT_USERDATA *pData = (PORT_USERDATA *)port->userdata;
     if (pData != NULL) {
         RASPIVID_STATE *pstate = pData->pstate;
-        int64_t current_time = get_microseconds()/1000;
+        int64_t current_time = metric::Collector::clock()/1000;
 
         int bytes_written = buffer->length;
+        Encoder_BufferCount.increment();
+        Encoder_BufferSize.sample(bytes_written);
 
         if (pstate->shouldRecord) {
             if (buffer->flags & MMAL_BUFFER_HEADER_FLAG_CONFIG) {
@@ -503,6 +501,8 @@ static void preview_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
     {
         if (buffer->length)
         {
+            Capture_BufferCount.increment();
+            Capture_BufferSize.sample(buffer->length);
             mmal_buffer_header_mem_lock(buffer);
             pData->cparams->buffer_callback(buffer->data + buffer->offset, buffer->length, pData->cparams->buffer_cookie);
             mmal_buffer_header_mem_unlock(buffer);
@@ -1112,7 +1112,15 @@ static void check_disable_port(MMAL_PORT_T *port)
 }
 
 void set_recording(bool rec) {
+    if (!state.shouldRecord == !rec) {
+        return;
+    }
     state.shouldRecord = rec ? 1 : 0;
+    if (!rec) {
+        state.callback_data.infobuf_size = 0;
+    }
+    fprintf(stderr, "recording is now %s\n", rec ? "on" : "off");
+    Capture_Recording.set(rec);
 }
 
 volatile bool running = true;
@@ -1182,7 +1190,7 @@ int setup_capture(CaptureParams const *cp)
     state.camera_parameters.exposureMeterMode = MMAL_PARAM_EXPOSUREMETERINGMODE_MATRIX;
     state.camera_parameters.drc_level = MMAL_PARAMETER_DRC_STRENGTH_OFF;
     state.camera_parameters.videoStabilisation = 1;
-    state.camera_parameters.shutter_speed = 5000;   //  microseconds
+    state.camera_parameters.shutter_speed = 8000;   //  microseconds
     state.width = gparams.width;
     state.height = gparams.height;
     state.bitrate = 0; //8000000;
