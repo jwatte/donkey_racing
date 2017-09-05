@@ -98,16 +98,15 @@ class SerialControl {
     /*  Enqueue a given item for immediate sending. Depending on 
      *  buffer space available, it may not actually be sent until 
      *  some number of step() calls later, but it's scheduled as 
-     *  "send ASAP." On an idle serial bus, it will be enqueued 
-     *  before the sendNow() call returns. sendNow() returns true 
-     *  if that was possible, and false if the data is just marked 
-     *  for later transmitting. Even if sendNow() returns true, 
+     *  "send ASAP." sendNow() returns true if it found the packet  
+     *  that you indicate bound. Even if sendNow() returns true, 
      *  you will have to call step() at least once to push out the
      *  data.
      */
     bool sendNow(uint8_t id);
     /*  Like sendNow(uint8_t) except pass a pointer to the actually 
-     *  bound data to be sent.
+     *  bound data to be sent. Again, returns true if the bound 
+     *  data was found.
      */
     bool sendNow(void const *data);
 

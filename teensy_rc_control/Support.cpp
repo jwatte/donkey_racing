@@ -20,14 +20,18 @@ void CRASH_ERROR(char const *msg) {
   int sl = (int)strlen(msg);
   int n = 0;
   while (true) {
-    if ((n & 127) == 127) {
+    if ((n & 63) == 63) {
       if (SerialUSB.availableForWrite() >= sl+2) {
         SerialUSB.println(msg);
       }
     }
     digitalWrite(13, n & 1);
     ++n;
-    delay(50);
+    delay(25);
+    if (n > 500) {
+      /* after 12.5 seconds, reboot */
+      software_reset();
+    }
   }
 }
 
@@ -68,5 +72,19 @@ DebugVal const *findDebugVal(char const *name) {
     }
   }
   return NULL;
+}
+
+void software_reset() {
+  //  Flash the LED for a second, to show what's going on.
+  //  Also gives user time to reset if it goes into a crash loop.
+  pinMode(13, OUTPUT);
+  for (int i = 0; i != 10; ++i) {
+    digitalWrite(13, HIGH);
+    delay(50);
+    digitalWrite(13, LOW);
+    delay(50);
+  }
+  //  reset using the control register
+  ((*(volatile uint32_t *)0xE000ED0C) = (0x5FA0004));
 }
 

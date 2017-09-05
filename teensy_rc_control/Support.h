@@ -51,5 +51,7 @@ DebugVal const *firstDebugVal();
 DebugVal const *nextDebugVal(DebugVal const *prev);
 DebugVal const *findDebugVal(char const *name);
 
+void software_reset();
+
 #endif  //  Support_h
 

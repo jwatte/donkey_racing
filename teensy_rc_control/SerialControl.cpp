@@ -68,8 +68,17 @@ void SerialControl::step(uint32_t now) {
 void SerialControl::readInput(uint32_t now) {
 
   while (serial_.available()) {
-
-    int ch = serial_.read();
+    unsigned char tmp[16];
+    int navail = 0;
+    while (serial_.available() && navail < 16) {
+      tmp[navail] = serial_.read();
+      ++navail;
+    }
+    if (navail >= 6 && !strncmp((char *)tmp, "reset!", 6)) {
+      software_reset();
+    }
+    for (int i = 0; i != navail; ++i) {
+    int ch = tmp[i];
     if (inPtr_ == 0 && ch != 0x55) {
       continue;
     }
@@ -103,6 +112,7 @@ void SerialControl::readInput(uint32_t now) {
     if (inPtr_ == sizeof(inBuf_)) {
       CRASH_ERROR("Overrun SerialControl inBuf_");
     }
+  }
   }
 }
 
@@ -227,7 +237,7 @@ bool SerialControl::sendNow(uint8_t id) {
         return true;
       }
       infos_[i].flags |= FlagToSend;
-      break;
+      return true;
     }
   }
   return false;
@@ -241,7 +251,7 @@ bool SerialControl::sendNow(void const *data) {
         return true;
       }
       infos_[i].flags |= FlagToSend;
-      break;
+      return true;
     }
   }
   return false;
@@ -249,7 +259,7 @@ bool SerialControl::sendNow(void const *data) {
 
 
 bool SerialControl::enqueuePayload(uint8_t id, void const *data, uint8_t length) {
-  uint8_t needed = length + 2;
+  uint8_t needed = length + 3;
   if (outPtr_ == 0) {
     needed += 5;
   }
@@ -267,9 +277,10 @@ bool SerialControl::enqueuePayload(uint8_t id, void const *data, uint8_t length)
   outBuf_[1] = 0xAA;
   outBuf_[2] = mySerial_;
   outBuf_[3] = lastRemoteSerial_;
-  outBuf_[4] = outPtr_ + length - 5;
-  memmove(&outBuf_[outPtr_], data, length);
-  outPtr_ += length;
+  outBuf_[4] = outPtr_ + length + 1 - 5;
+  outBuf_[outPtr_] = id;
+  memmove(&outBuf_[outPtr_+1], data, length);
+  outPtr_ += length + 1;
   return true;
 }
 

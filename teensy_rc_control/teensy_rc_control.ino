@@ -67,6 +67,7 @@ void setup() {
   onCrash(detachServos);
   readTrim();
   gSerialControl.bind(IBusPacket::PacketCode, &iBusPacket, sizeof(iBusPacket), true);
+  gSerialControl.bind(SteerControl::PacketCode, &steerControl, sizeof(steerControl), false);
   SerialUSB.begin(1000000);
   gSerialControl.begin();
 }
@@ -91,6 +92,7 @@ void loop() {
     maybeTrim(now);
   }
 
+  bool steerChanged = false;
   if (!hasRC || fsValues[9] < 1750) {
     /* turn off the servos */
     detachServos();
@@ -99,7 +101,7 @@ void loop() {
     digitalWrite(4, (now & (64+128+256)) == 192);
     steerControl.steer = (int16_t)0x8000;
     steerControl.throttle = (int16_t)0x8000;
-    gSerialControl.sendNow(&steerControl);
+    steerChanged = true;
   } else {
     /* send the current heading/speed */
     attachServos();
@@ -110,13 +112,20 @@ void loop() {
       float fThrottle = inThrottle.mapIn(fsValues[1]);
       steerControl.throttle = intFloat(fThrottle);
       sendThrottle = outThrottle.mapOut(fThrottle);
-      gSerialControl.sendNow(&steerControl);
+      steerChanged = true;
     }
     carSteer.writeMicroseconds(sendSteer);
     carThrottle.writeMicroseconds(sendThrottle);
     digitalWrite(13, sendThrottle > outThrottle.center_ ? HIGH : LOW);
     digitalWrite(3, sendSteer < outSteer.center_ ? HIGH : LOW);
     digitalWrite(4, sendSteer > outSteer.center_ ? HIGH : LOW);
+  }
+  if (steerChanged) {
+    if (!gSerialControl.sendNow(&steerControl)) {
+        digitalWrite(13, HIGH);
+        digitalWrite(3, HIGH);
+        digitalWrite(4, HIGH);
+    }
   }
 
   uint32_t next = now;
