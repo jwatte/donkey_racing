@@ -32,8 +32,8 @@ static int im_planes;
 static size_t im_size;
 static bool ibusWantsRecord;
 static bool drawFlags = true;
-static bool drawIbus = true;
-static bool drawSteer = true;
+static bool drawIbus = false;
+static bool drawSteer = false;
 static uint16_t ibusData[10];
 static SteerControl steerControlData;
 
@@ -48,16 +48,17 @@ void do_move(int x, int y, unsigned int btns) {
 
 static size_t framesDrawn;
 static uint64_t framesStart;
-static double drawFps = 1.0f;
+static uint64_t lastLoop;
+static double meanFps = 15.0f;
+static double fastFps = 15.0f;
 
 void do_draw() {
     uint64_t now = metric::Collector::clock();
     gg_draw_mesh(&drawMeshY);
     gg_draw_mesh(&drawMeshU);
     char fpsText[20];
-    sprintf(fpsText, "%.1f", (drawFps * (64 - framesDrawn) + 
-            ((now > framesStart) ? double(framesDrawn) / (1e-6 * (now - framesStart)) : 0.0f)
-            * framesDrawn) * (1.0f / 64.0f));
+    fastFps = fastFps * 0.9 + 1e6 / (now - lastLoop) * 0.1;
+    sprintf(fpsText, "%4.1f %4.1f", meanFps, fastFps);
     gg_draw_text(3, 3, 0.75f, fpsText, color::textred);
 
     if (drawFlags) {
@@ -103,13 +104,14 @@ void do_draw() {
     }
 
     if (framesDrawn == 64) {
-        double newFps = framesDrawn * 1000000.0 / (now - framesStart);
+        double newFps = framesDrawn * 1e6 / (now - framesStart);
         Graphics_Fps.sample(newFps);
         framesDrawn = 0;
         framesStart = now;
-        drawFps = drawFps * 0.2 + newFps * 0.8; 
+        meanFps = meanFps * 0.8 + newFps * 0.2;
     }
     ++framesDrawn;
+    lastLoop = now;
 }
 
 static unsigned char byte_from_float(float f) {
@@ -118,7 +120,48 @@ static unsigned char byte_from_float(float f) {
     return (unsigned char)(f * 255);
 }
 
-int splode = 20;
+void update_comms() {
+    uint64_t now = get_microseconds();
+    bool fresh = false;
+    uint64_t time = 0;
+    SteerControl const *steerControl = serial_steer_control(&time, &fresh);
+    if (steerControl && fresh) {
+        Packet_SteerControlCount.increment();
+        //  push into recording stream
+        insert_metadata(SteerControl::PacketCode, steerControl, sizeof(*steerControl));
+        memcpy(&steerControlData, steerControl, sizeof(steerControlData));
+    }
+    Packet_SteerControlAge.sample((now - time) * 1e-6);
+
+    IBusPacket const *ibusPacket = serial_ibus_packet(&time, &fresh);
+    if (ibusPacket && fresh) {
+        Packet_IBusPacketCount.increment();
+        ibusWantsRecord = ibusPacket->data[7] > 1700;
+        //  push into recording stream
+        insert_metadata(IBusPacket::PacketCode, ibusPacket, sizeof(*ibusPacket));
+        memcpy(ibusData, ibusPacket->data, sizeof(ibusData));
+    }
+    double ibusAge = (now - time) * 1e-6;
+    Packet_IBusPacketAge.sample(ibusAge);
+    if (ibusAge > 1.5) {
+        ibusWantsRecord = false;
+    }
+
+    TrimInfo const *trimInfo = serial_trim_info(&time, &fresh);
+    if (trimInfo && fresh) {
+        Packet_TrimInfoCount.increment();
+        //  push into recording stream
+        insert_metadata(TrimInfo::PacketCode, trimInfo, sizeof(*trimInfo));
+    }
+    Packet_TrimInfoAge.sample((now - time) * 1e-6);
+
+    /* derive recording state from possibly multiple sources */
+    bool shouldRecord = false;
+    if (ibusWantsRecord) {
+        shouldRecord = true;
+    }
+    set_recording(shouldRecord);
+}
 
 void do_idle() {
     Frame *fr = NULL;
@@ -144,57 +187,10 @@ void do_idle() {
             }
         }
         fr->endRead();
-        if (splode) {
-            splode--;
-            if (!splode) {
-                stbi_write_png("/tmp/y.png", netTextureY.width, netTextureY.height, 1, netTextureY.mipdata[0], 0);
-                stbi_write_png("/tmp/u.png", netTextureU.width, netTextureU.height, 1, netTextureU.mipdata[0], 0);
-            }
-        }
         gg_update_texture(&netTextureY, 0, im_width, 0, im_height);
         gg_update_texture(&netTextureU, 0, im_width, 0, im_height);
     }
 
-    uint64_t now = get_microseconds();
-    bool fresh = false;
-    uint64_t time = 0;
-    SteerControl const *steerControl = serial_steer_control(&time, &fresh);
-    if (steerControl && fresh) {
-        Packet_SteerControlCount.increment();
-        //  push into recording stream
-        insert_metadata(SteerControl::PacketCode, steerControl, sizeof(*steerControl));
-        memcpy(&steerControlData, steerControl, sizeof(steerControlData));
-    }
-    Packet_SteerControlAge.sample((now - time) * 1e-6);
-
-    IBusPacket const *ibusPacket = serial_ibus_packet(&time, &fresh);
-    if (ibusPacket && fresh) {
-        Packet_IBusPacketCount.increment();
-        ibusWantsRecord = ibusPacket->data[9] > 1500;
-        //  push into recording stream
-        insert_metadata(IBusPacket::PacketCode, ibusPacket, sizeof(*ibusPacket));
-        memcpy(ibusData, ibusPacket->data, sizeof(ibusData));
-    }
-    double ibusAge = (now - time) * 1e-6;
-    Packet_IBusPacketAge.sample(ibusAge);
-    if (ibusAge > 1.5) {
-        ibusWantsRecord = false;
-    }
-
-    TrimInfo const *trimInfo = serial_trim_info(&time, &fresh);
-    if (trimInfo && fresh) {
-        Packet_TrimInfoCount.increment();
-        //  push into recording stream
-        insert_metadata(TrimInfo::PacketCode, trimInfo, sizeof(*trimInfo));
-    }
-    Packet_TrimInfoAge.sample((now - time) * 1e-6);
-
-    /* derive recording state from possibly multiple sources */
-    bool shouldRecord = false;
-    if (ibusWantsRecord) {
-        shouldRecord = true;
-    }
-    set_recording(shouldRecord);
 }
 
 
@@ -270,6 +266,17 @@ bool build_gui() {
     return true;
 }
 
+static volatile bool commsRunning;
+static pthread_t commsThread;
+
+void *comms_thread(void *) {
+    while (commsRunning) {
+        usleep(50000);
+        update_comms();
+    }
+    return NULL;
+}
+
 void setup_run() {
 
     char const *network = get_setting("network", "network");
@@ -303,6 +310,8 @@ void setup_run() {
         exit(1);
     }
 
+    commsRunning = true;
+    pthread_create(&commsThread, NULL, comms_thread, NULL);
     //set_recording(true);
 }
 
@@ -329,10 +338,6 @@ int main(int argc, char const *argv[]) {
     mkdir("/var/tmp/pilot", 0775);
     if (load_settings("pilot")) {
         fprintf(stderr, "Loaded settings from '%s'\n", "pilot");
-    }
-    if (!configure_metrics()) {
-        fprintf(stderr, "Can't run without metrics\n");
-        return -1;
     }
     if (gg_setup(800, 480, 0, 0, "pilot") < 0) {
         fprintf(stderr, "GLES context setup failed\n");
@@ -380,9 +385,14 @@ int main(int argc, char const *argv[]) {
         gg_onmousebutton(do_click);
         gg_onmousemove(do_move);
         gg_ondraw(do_draw);
+        if (!configure_metrics()) {
+            fprintf(stderr, "Can't run without metrics\n");
+            return -1;
+        }
         setup_run();
         gg_run(do_idle);
     }
+    commsRunning = false;
     stop_serial();
     network_stop();
     stop_metrics();

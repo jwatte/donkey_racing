@@ -1,8 +1,6 @@
 [Unit]
 Description=ip_beacon making device discoverable
 Documentation=https://gihub.com/jwatte/donkey_racing/ip_beacon/
-After=networking.service
-Wants=networking.service
 
 [Service]
 Type=idle
