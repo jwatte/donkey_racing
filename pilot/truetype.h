@@ -1,6 +1,8 @@
 #if !defined(truetype_h)
 #define truetype_h
 
+#include <stdint.h>
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -10,6 +12,7 @@ typedef struct TTVertex {
     float y;
     float u;
     float v;
+    uint32_t c;
 } TTVertex;
 
 /* Load a given font into a bitmap. Note: character data is stored in statics, 

@@ -16,7 +16,7 @@ PinPulseIn<14> rcSteer;
 Servo carSteer;
 Servo carThrottle;
 
-SerialControl gSerialControl(SerialUSB, true);
+SerialControl gSerialControl(/*SerialUSB,*/ true);
 
 #define fsValues iBusPacket.data
 IBusPacket iBusPacket;

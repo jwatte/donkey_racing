@@ -64,6 +64,9 @@ static void (*cb_draw)();
 static Texture fontTexture;
 static Mesh fontMesh;
 static Program const *fontProgram;
+static Mesh boxMesh;
+static Program const *boxProgram;
+static Mesh lineMesh;
 static float guiTransform[16];
 static std::map<std::string, Texture> gNamedTextures;
 static std::map<std::string, Mesh> gNamedMeshes;
@@ -256,12 +259,19 @@ static bool init_ogl(Context *ctx, unsigned int width, unsigned int height) {
     get_truetype_bitmap(&data, &bmwidth, &bmheight);
     gg_allocate_texture(data, bmwidth, bmheight, 0, 1, &fontTexture);
     check();
-    gg_allocate_mesh(NULL, 16, 0, NULL, 0, 8, 0, &fontMesh, MESH_FLAG_DYNAMIC);
+    gg_allocate_mesh(NULL, 20, 0, NULL, 0, 8, 16, &fontMesh, MESH_FLAG_DYNAMIC | MESH_FLAG_COLOR_BYTES);
     check();
     gg_get_gui_transform(guiTransform);
     char err[128];
-    if (!(fontProgram = gg_compile_named_program("gui", err, 128))) {
-        fprintf(stderr, "Can't load gui program: %s\n", err);
+    if (!(fontProgram = gg_compile_named_program("gui-color-texture", err, 128))) {
+        fprintf(stderr, "Can't load gui-color-texture program: %s\n", err);
+        return false;
+    }
+    check();
+    gg_allocate_mesh(NULL, 12, 0, NULL, 0, 0, 8, &boxMesh, MESH_FLAG_DYNAMIC | MESH_FLAG_COLOR_BYTES);
+    gg_allocate_mesh(NULL, 12, 0, NULL, 0, 0, 8, &lineMesh, MESH_FLAG_DYNAMIC | MESH_FLAG_COLOR_BYTES);
+    if (!(boxProgram = gg_compile_named_program("gui-color", err, 128))) {
+        fprintf(stderr, "Can't load gui-color program: %s\n", err);
         return false;
     }
     check();
@@ -732,13 +742,17 @@ void gg_update_mesh(Mesh *mesh, void const *mdata, unsigned int fromvertex, unsi
     }
     glBufferSubData(GL_ARRAY_BUFFER, mesh->vertexsize * (GLuint)fromvertex, mesh->vertexsize * (GLuint)numvertices, mdata);
     check();
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->indexbuf);
-    if (fromindex+numindices > mesh->numindices || !(mesh->flags & MESH_FLAG_DYNAMIC) || !numindices) {
-        mesh->numindices = fromindex + numindices;
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->numindices * (GLuint)2, NULL, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
-        check();
+    if (numindices) {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->indexbuf);
+        if (fromindex+numindices > mesh->numindices || !(mesh->flags & MESH_FLAG_DYNAMIC) || !numindices) {
+            mesh->numindices = fromindex + numindices;
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->numindices * (GLuint)2, NULL, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
+            check();
+        }
+        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 2 * (GLuint)fromindex, 2 * (GLuint)numindices, indices);
+    } else {
+        mesh->numindices = 0;
     }
-    glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 2 * (GLuint)fromindex, 2 * (GLuint)numindices, indices);
     check();
 }
 
@@ -913,7 +927,7 @@ static void use(Mesh const *mesh, Program const *program) {
         glDisableVertexAttribArray(2);
         check();
     }
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->indexbuf);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->numindices ? mesh->indexbuf : 0);
     check();
 }
 
@@ -938,12 +952,19 @@ void gg_draw_mesh(MeshDrawOp const *draw) {
     if (draw->transform) {
         gg_set_program_transform(draw->program, draw->transform);
     }
-    use(draw->texture);
+    if (draw->texture) {
+        use(draw->texture);
+    }
     use(draw->mesh, draw->program);
     if (draw->program->g_color != (unsigned int)-1) {
         glUniform4fv(draw->program->g_color, 1, draw->color);
     }
-    glDrawElements(GL_TRIANGLES, draw->mesh->numindices, GL_UNSIGNED_SHORT, (GLvoid *)0);
+    if (draw->mesh->numindices) {
+        glDrawElements(draw->primitive == PK_Lines ? GL_LINES : GL_TRIANGLES,
+            draw->mesh->numindices, GL_UNSIGNED_SHORT, (GLvoid *)0);
+    } else {
+        glDrawArrays(draw->primitive == PK_Lines ? GL_LINES : GL_TRIANGLES, 0, draw->mesh->numvertices);
+    }
     check();
 }
 
@@ -961,24 +982,26 @@ float const *gg_gui_transform() {
 }
 
 
-void gg_get_quad_transform(float left, float bottom, float width, float height, float *oMatrix) {
-    memset(oMatrix, 0, 16*sizeof(float));
-    oMatrix[0] = 2.0f * width / gCtx.screen_width;
-    oMatrix[5] = 2.0f * height / gCtx.screen_height;
-    oMatrix[12] = 2.0f / left - 1.0f;
-    oMatrix[13] = 2.0f / bottom - 1.0f;
-    oMatrix[15] = 1.0f;
-}
+struct BoxVertex {
+    float x;
+    float y;
+    uint32_t c;
+};
+
 
 static std::vector<TTVertex> textVertices;
 static std::vector<uint16_t> textIndices;
+static std::vector<BoxVertex> boxVertices;
+static std::vector<uint16_t> boxIndices;
+static std::vector<BoxVertex> lineVertices;
+
 
 static void add_text_index(std::vector<TTVertex> const &v, std::vector<uint16_t> const &i, int n) {
     textVertices.insert(textVertices.end(), v.begin(), v.begin() + n*4);
     textIndices.insert(textIndices.end(), i.begin(), i.begin() + n*6);
 }
 
-void gg_draw_text(float x, float y, float size, char const *text) {
+void gg_draw_text(float x, float y, float size, char const *text, uint32_t color) {
     std::vector<TTVertex> vec;
     std::vector<unsigned short> ind;
     size_t len = strlen(text);
@@ -993,11 +1016,10 @@ void gg_draw_text(float x, float y, float size, char const *text) {
     if (!n) {
         return;
     }
-    if (size != 1.0f) {
-        for (int i = 0; i != n; ++i) {
-            vec[i].x = ox + (vec[i].x-ox)*size;
-            vec[i].y = oy + (vec[i].y-oy)*size;
-        }
+    for (int i = 0; i != n; ++i) {
+        vec[i].x = ox + (vec[i].x-ox)*size;
+        vec[i].y = oy + (vec[i].y-oy)*size;
+        vec[i].c = color;
     }
     unsigned short o = 0;
     unsigned int root = textVertices.size();
@@ -1012,6 +1034,19 @@ void gg_draw_text(float x, float y, float size, char const *text) {
     add_text_index(vec, ind, n/4);
 }
 
+void gg_draw_box(float left, float bottom, float right, float top, uint32_t color) {
+    uint16_t cnt = (uint16_t)boxVertices.size();
+    boxVertices.push_back({ left, bottom, color });
+    boxVertices.push_back({ right, bottom, color });
+    boxVertices.push_back({ right, top, color });
+    boxVertices.push_back({ left, top, color });
+    boxIndices.push_back(cnt);
+    boxIndices.push_back(cnt+1);
+    boxIndices.push_back(cnt+2);
+    boxIndices.push_back(cnt+2);
+    boxIndices.push_back(cnt+3);
+    boxIndices.push_back(cnt);
+}
 
 
 void service_mouse(Context *ctx) {
@@ -1116,14 +1151,29 @@ void gg_run(void (*idlefn)()) {
         if (cb_draw) {
             cb_draw();
         }
+        if (boxVertices.size()) {
+            gg_update_mesh(&boxMesh, &boxVertices[0], 0, boxVertices.size(), &boxIndices[0], 0, boxIndices.size());
+            boxMesh.numvertices = boxVertices.size();
+            boxMesh.numindices = boxIndices.size();
+            MeshDrawOp mdo = { boxProgram, NULL, &boxMesh, guiTransform, { 1, 1, 1, 1 } };
+            gg_draw_mesh(&mdo);
+            boxVertices.clear();
+            boxIndices.clear();
+        }
+        if (lineVertices.size()) {
+            gg_update_mesh(&lineMesh, &lineVertices[0], 0, lineVertices.size(), NULL, 0, 0);
+            lineMesh.numvertices = lineVertices.size();
+            lineMesh.numindices = 0;
+            MeshDrawOp mdo = { boxProgram, NULL, &lineMesh, guiTransform, { 1, 1, 1, 1 }, PK_Lines };
+            gg_draw_mesh(&mdo);
+            lineVertices.clear();
+        }
         if (textVertices.size()) {
             gg_update_mesh(&fontMesh, &textVertices[0], 0, textVertices.size(), &textIndices[0], 0, textIndices.size());
             fontMesh.numvertices = textVertices.size();
             fontMesh.numindices = textIndices.size();
             MeshDrawOp mdo = { fontProgram, &fontTexture, &fontMesh, guiTransform, { 1, 1, 1, 1 } };
             gg_draw_mesh(&mdo);
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-            glDrawElements(GL_TRIANGLES, textIndices.size(), GL_UNSIGNED_SHORT, &textIndices[0]);
             textVertices.clear();
             textIndices.clear();
         }
@@ -1141,4 +1191,21 @@ void gg_init_color(float *d, float r, float g, float b, float a) {
     d[3] = a;
 }
 
+namespace color {
+    uint32_t const white = 0xffffffff;
+    uint32_t const midgray = 0xff808080;
+    uint32_t const black = 0xff000000;
+
+    uint32_t const textgray = 0xffc0c0c0;
+    uint32_t const textyellow = 0xffa0f0f0;
+    uint32_t const textblue = 0xffffa0a0;
+    uint32_t const textred = 0xffa0a0ff;
+    uint32_t const textgreen = 0xffa0ffa0;
+
+    uint32_t const bggray = 0xff202020;
+    uint32_t const bgyellow = 0xff204040;
+    uint32_t const bgblue = 0xff402020;
+    uint32_t const bgred = 0xff202040;
+    uint32_t const bggreen = 0xff204020;
+}
 

@@ -41,7 +41,7 @@ class SerialControl {
   
   public:
   
-    SerialControl(Stream &serial, bool waitForFirstPacket = true);
+    SerialControl(/*Stream &serial,*/ bool waitForFirstPacket = true);
 
     /*  Bind a given struct to the given ID. The struct layout in 
      *  memory will be replicated verbatim on the wire. This is 
@@ -124,6 +124,7 @@ class SerialControl {
        *  enqueuePayload() and unknownPacketId() functions to handle them.
        */
       MAX_ITEMS = 8,
+      /* These must be the size of RawHID packets */
       MAX_INBUF_SIZE = 64,
       MAX_OUTBUF_SIZE = 64
     };
@@ -170,7 +171,7 @@ class SerialControl {
     void readInput(uint32_t now);
     void writeOutput(uint32_t now);
     
-    Stream &serial_;
+    /*Stream &serial_;*/
 
     /*  The implementation does a lot of linear look-ups in these arrays.
      *  Because the Teensy ARM chip actually has a cache, those look-ups 

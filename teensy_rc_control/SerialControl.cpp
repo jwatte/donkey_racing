@@ -4,15 +4,22 @@
 #include "Support.h"
 
 #include <string.h>
-#include <HardwareSerial.h>
+#include <usb_rawhid.h>
 
+
+#define AUTO_SEND_INTERVAL 400
+
+
+//  this is exposed by usb_serial.h, but I don't need to 
+//  include that header, so declaring it here.
+extern volatile uint8_t usb_configuration;
 
 static FastCRC16 gKermit;
 
 
-SerialControl::SerialControl(Stream &serial, bool waitForFirstPacket)
-  : serial_(serial)
-  , lastAutoSendTime_(0)
+SerialControl::SerialControl(/*Stream &serial,*/ bool waitForFirstPacket)
+  /*: serial_(serial)*/
+  : lastAutoSendTime_(0)
   , inPtr_(0)
   , outPtr_(0)
   , waitForFirstPacket_(waitForFirstPacket)
@@ -67,65 +74,40 @@ void SerialControl::step(uint32_t now) {
 
 void SerialControl::readInput(uint32_t now) {
 
-  while (serial_.available()) {
-    unsigned char tmp[16];
-    int navail = 0;
-    while (serial_.available() && navail < 16) {
-      tmp[navail] = serial_.read();
-      ++navail;
-    }
-    if (navail >= 6 && !strncmp((char *)tmp, "reset!", 6)) {
-      software_reset();
-    }
-    for (int i = 0; i != navail; ++i) {
-    int ch = tmp[i];
-    if (inPtr_ == 0 && ch != 0x55) {
-      continue;
-    }
-    if (inPtr_ == 1 && ch != 0xAA) {
-      continue;
-    }
-    if ((inPtr_ == 4) && (ch > (int)sizeof(inBuf_) - 7)) {
-      discardingData(inBuf_, inPtr_);
-      //  too long packet! maybe I lost sync?
-      inPtr_ = (ch == 0x55) ? 1 : 0;
-      continue;
-    }
-
-    inBuf_[inPtr_] = ch;
-    ++inPtr_;
-
-    if ((inPtr_ >= 7) && (inPtr_ == (7 + inBuf_[4]))) {
+  inPtr_ = RawHID.recv(inBuf_, 0);
+  if (inPtr_ >= 6 && !strncmp((char *)inBuf_, "reset!", 6)) {
+    software_reset();
+  }
+  if ((inBuf_[0] == 0x55) && (inBuf_[1] = 0xAA) &&
+      (inPtr_ >= 7) && (inPtr_ >= (7 + inBuf_[4]))) {
       //  calculate CRC
-      uint16_t crc = gKermit.kermit(&inBuf_[4], inBuf_[4] + 1);
-      unsigned char *endPtr = &inBuf_[5] + inBuf_[4];
-      if ((endPtr[0] == (crc & 0xff)) && (endPtr[1] == ((crc >> 8) & 0xff))) {
-        lastRemoteSerial_ = inBuf_[2];
-        waitForFirstPacket_ = false;
-        parseFrame(&inBuf_[5], inBuf_[4]);
-      } else {
-        discardingData(inBuf_, inPtr_);
-      }
-      inPtr_ = 0;
+    uint16_t crc = gKermit.kermit(&inBuf_[4], inBuf_[4] + 1);
+    unsigned char *endPtr = &inBuf_[5] + inBuf_[4];
+    if ((endPtr[0] == (crc & 0xff)) && (endPtr[1] == ((crc >> 8) & 0xff))) {
+      lastRemoteSerial_ = inBuf_[2];
+      //  don't care about my serial echoed back inBuf_[3]
+      waitForFirstPacket_ = false;
+      parseFrame(&inBuf_[5], inBuf_[4]);
+    } else {
+      discardingData(inBuf_, inPtr_);
     }
-
-    if (inPtr_ == sizeof(inBuf_)) {
-      CRASH_ERROR("Overrun SerialControl inBuf_");
-    }
+  } else {
+    discardingData(inBuf_, inPtr_);
   }
-  }
+  inPtr_ = 0;
 }
 
 
 void SerialControl::writeOutput(uint32_t now) {
 
   /* Send nothing until the host has connected */
-  if (waitForFirstPacket_) {
+  if (waitForFirstPacket_ || !usb_configuration) {
+    outPtr_ = 0;
     return;
   }
 
   bool failedToAutoSend = false;
-  if (now - lastAutoSendTime_ >= 1000) {
+  if (now - lastAutoSendTime_ >= AUTO_SEND_INTERVAL) {
 
     /* Look for auto-send packets that haven't been sent yet. */
     for (int ix = 0; ix != MAX_ITEMS; ++ix) {
@@ -167,15 +149,13 @@ void SerialControl::writeOutput(uint32_t now) {
 
   /* if there's data to be written, attempt to form a packet and send it */
   if (outPtr_ > 0) {
-    /* only write a packet if the serial port is ready */
-    if (serial_.availableForWrite() >= outPtr_ + 2) {
-      if (outPtr_ > sizeof(outBuf_) - 2) {
-        CRASH_ERROR("Overrun SerialCommand ouBuf_");
-      }
-      uint16_t crc = gKermit.kermit(&outBuf_[4], outPtr_-4);
-      outBuf_[outPtr_++] = crc & 0xff;
-      outBuf_[outPtr_++] = (crc >> 8) & 0xff;
-      serial_.write(outBuf_, outPtr_);
+    if (outPtr_ > sizeof(outBuf_) - 2) {
+      CRASH_ERROR("Overrun SerialCommand ouBuf_");
+    }
+    uint16_t crc = gKermit.kermit(&outBuf_[4], outPtr_-4);
+    outBuf_[outPtr_] = crc & 0xff;
+    outBuf_[outPtr_+1] = (crc >> 8) & 0xff;
+    if (RawHID.send(outBuf_, 0)) {
       outPtr_ = 0;
     }
   }

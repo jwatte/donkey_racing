@@ -32,7 +32,10 @@ static int im_planes;
 static size_t im_size;
 static bool ibusWantsRecord;
 static bool drawFlags = true;
+static bool drawIbus = true;
+static bool drawSteer = true;
 static uint16_t ibusData[10];
+static SteerControl steerControlData;
 
 
 void do_click(int mx, int my, int btn, int st) {
@@ -55,34 +58,48 @@ void do_draw() {
     sprintf(fpsText, "%.1f", (drawFps * (64 - framesDrawn) + 
             ((now > framesStart) ? double(framesDrawn) / (1e-6 * (now - framesStart)) : 0.0f)
             * framesDrawn) * (1.0f / 64.0f));
-    gg_draw_text(3, 3, 0.75f, fpsText);
+    gg_draw_text(3, 3, 0.75f, fpsText, color::textred);
 
     if (drawFlags) {
         int y = 2;
         for (metric::Flag const *f = metric::Collector::iterFlags(); f; f = metric::Collector::nextFlag(f)) {
-            gg_draw_text(3, y * 20, 0.75f, f->name());
             bool flag = false;
             double avg = 0.0;
             uint64_t tim = 0;
             f->get(flag, avg, tim);
-            gg_draw_text(400, y * 20, 0.75f, flag ? "ON" : "");
+            uint32_t c = flag ? color::textyellow : color::textblue;
+            gg_draw_text(3, y * 20, 0.75f, f->name(), c);
+            gg_draw_text(400, y * 20, 0.75f, flag ? "ON" : "", c);
             sprintf(fpsText, "%4.2f", avg);
-            gg_draw_text(450, y * 20, 0.75f, fpsText);
+            gg_draw_text(450, y * 20, 0.75f, fpsText, c);
             double age = (now - tim) * 1e-6;
             if (age < 100.0f) {
                 sprintf(fpsText, "%5.2f", age);
             } else {
                 strcpy(fpsText, "old");
             }
-            gg_draw_text(520, y * 20, 0.75f, fpsText);
+            gg_draw_text(520, y * 20, 0.75f, fpsText, c);
             y += 1;
         }
     }
 
-    for (int i = 0; i != 10; ++i) {
-        char buf[12];
-        sprintf(buf, "%4d", ibusData[i]); 
-        gg_draw_text(10+70*i, 300, 0.75f, buf);
+    if (drawSteer) {
+        gg_draw_box(400-328, 300, 400+328, 340, color::bggray);
+        if (steerControlData.steer == (int16_t)0x8000) {
+            gg_draw_box(360, 300, 440, 340, color::bgred);
+        } else if (abs(steerControlData.steer) < 10) {
+            gg_draw_box(398, 300, 402, 340, color::bggreen);
+        } else {
+            gg_draw_box(400 + steerControlData.steer / 50, 300, 400, 340, color::bgblue);
+        }
+    }
+
+    if (drawIbus) {
+        for (int i = 0; i != 10; ++i) {
+            char buf[12];
+            sprintf(buf, "%4d", ibusData[i]); 
+            gg_draw_text(10+70*i, 300, 0.75f, buf, color::textgray);
+        }
     }
 
     if (framesDrawn == 64) {
@@ -139,16 +156,16 @@ void do_idle() {
     }
 
     uint64_t now = get_microseconds();
-    bool fresh;
-    uint64_t time;
+    bool fresh = false;
+    uint64_t time = 0;
     SteerControl const *steerControl = serial_steer_control(&time, &fresh);
     if (steerControl && fresh) {
         Packet_SteerControlCount.increment();
         //  push into recording stream
         insert_metadata(SteerControl::PacketCode, steerControl, sizeof(*steerControl));
+        memcpy(&steerControlData, steerControl, sizeof(steerControlData));
     }
     Packet_SteerControlAge.sample((now - time) * 1e-6);
-
 
     IBusPacket const *ibusPacket = serial_ibus_packet(&time, &fresh);
     if (ibusPacket && fresh) {
@@ -241,7 +258,7 @@ bool build_gui() {
     }
     gg_allocate_mesh(guiPictureVbufY, 16, 16, guiPictureIbuf, 6, 8, 0, &netMeshY, 0);
     gg_allocate_mesh(guiPictureVbufU, 16, 16, guiPictureIbuf, 6, 8, 0, &netMeshU, 0);
-    drawMeshY.program = gg_compile_named_program("gui", errbuf, sizeof(errbuf));
+    drawMeshY.program = gg_compile_named_program("gui-texture", errbuf, sizeof(errbuf));
     drawMeshY.texture = &netTextureY;
     drawMeshY.mesh = &netMeshY;
     drawMeshY.transform = gg_gui_transform();

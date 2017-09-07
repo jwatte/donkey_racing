@@ -2,6 +2,7 @@
 #define glesgui_h
 
 #include <unistd.h> /* for size_t */
+#include <stdint.h>
 
 #if defined(__cplusplus)
 extern "C" {
@@ -93,26 +94,50 @@ void gg_clear_mesh(Mesh *mesh);
 Mesh const *gg_load_named_mesh(char const *name, char *error, size_t esize);
 void gg_clear_named_meshes();
 
+enum PrimitiveKind {
+    PK_Triangles,
+    PK_Lines
+};
 struct MeshDrawOp {
     Program const *program;
     Texture const *texture;
     Mesh const *mesh;
     float const *transform;
     float color[4];
+    PrimitiveKind primitive;
 };
 void gg_set_program_transform(Program const *program, float const *transform);
 void gg_set_named_program_transforms(float const *transform);
 void gg_draw_mesh(MeshDrawOp const *draw);
-void gg_draw_text(float x, float y, float size, char const *text);
+void gg_draw_text(float x, float y, float size, char const *text, uint32_t color);
+void gg_draw_box(float left, float bottom, float right, float top, uint32_t color);
+void gg_draw_line(float x1, float y1, float x2, float y2, uint32_t color);
 void gg_get_gui_transform(float *oMatrix);
 float const *gg_gui_transform();
-void gg_get_quad_transform(float left, float bottom, float width, float height, float *oMatrix);
 void gg_get_gl_errors(void (*func)(char const *error, void *cookie), void *cookie);
 void gg_break_gl_error(void (*func)(char const *error, void *cookie), void *cookie);
 
 void gg_init_color(float *d, float r, float g, float b, float a);
 
 #if defined(__cplusplus)
+namespace color {
+    extern uint32_t const white;
+    extern uint32_t const midgray;
+    extern uint32_t const black;
+
+    extern uint32_t const textgray;
+    extern uint32_t const textyellow;
+    extern uint32_t const textblue;
+    extern uint32_t const textred;
+    extern uint32_t const textgreen;
+
+    extern uint32_t const bggray;
+    extern uint32_t const bgyellow;
+    extern uint32_t const bgblue;
+    extern uint32_t const bgred;
+    extern uint32_t const bggreen;
+}
+
 }
 #endif
 
