@@ -16,7 +16,7 @@ x = 96
 y = 63
 w = 640-2*x # 448, div3 = 149
 h = 480-2*y # 354, div2 = 177, div3 = 59
-yoffset = 0 # change this if you want to crop higher up or lower down
+yoffset = -70 # change this if you want to crop higher up or lower down
             # larger number means further down
 # only the bottom half of the image is interesting
 crp = dst[y+(h/2)+yoffset:(y+h)+yoffset,x:(x+w)]
