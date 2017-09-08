@@ -10,6 +10,8 @@
 *.kicad_pcb-bak
 *.summary
 *.log
+*.h264
+*.mp4
 mktraining/mktraining
 blur/blur
 stb
@@ -20,3 +22,4 @@ pilot/rifftoh264
 network/data
 network/proto
 network/some-lmdb
+mktrain/mktrain
