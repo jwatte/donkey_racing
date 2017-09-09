@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include <list>
+#include <string>
 
 extern "C" {
 
@@ -37,6 +38,15 @@ std::list<stream_chunk> h264Chunks;
 std::list<stream_chunk> timeChunks;
 std::list<stream_chunk> pdtsChunks;
 
+struct dump_chunk {
+    char type[4];
+    std::string filename;
+};
+
+std::list<dump_chunk> dumpChunks;
+std::list<std::string> filenameArgs;
+std::string datasetName;
+
 void check_header(FILE *f, char const *name) {
     file_header fh;
     if ((12 != fread(&fh, 1, 12, f)) || strncmp(fh.type, "RIFF", 4) || strncmp(fh.subtype, "h264", 4)) {
@@ -45,56 +55,99 @@ void check_header(FILE *f, char const *name) {
     }
 }
 
-void generate_dataset() {
+bool generate_requested_file(char const *type, char const *output) {
+    return false;
+}
+
+bool generate_dataset(char const *output) {
     avcodec_register_all();
     auto codec = avcodec_find_decoder(AV_CODEC_ID_H264);
     if (!codec) {
         fprintf(stderr, "avcodec_find_decoder(): h264 not found\n");
-        exit(1);
+        return false;
     }
     auto ctx = avcodec_alloc_context3(codec);
     if (!ctx) {
         fprintf(stderr, "avcodec_alloc_context3(): failed to allocate\n");
-        exit(1);
+        return false;
     }
     if (avcodec_open2(ctx, codec, NULL) < 0) {
         fprintf(stderr, "avcodec_open2(): failed to open\n");
-        exit(1);
+        return false;
     }
     auto frame = av_frame_alloc();
     if (!frame) {
         fprintf(stderr, "av_frame_alloc(): alloc failed\n");
-        exit(1);
+        return false;
     }
     auto parser = av_parser_init(AV_CODEC_ID_H264);
     if (!parser) {
         fprintf(stderr, "av_parser_init(): h264 failed\n");
-        exit(1);
+        return false;
     }
-    return;
+    return false;
 }
 
 int main(int argc, char const *argv[]) {
     if (argc == 1 || argv[0][0] == '-') {
-        fprintf(stderr, "usage: mktrain file1.riff file2.riff ...\n");
+usage:
+        fprintf(stderr, "usage: mktrain [options] file1.riff file2.riff ...\n");
+        fprintf(stderr, "--dump type:filename\n");
+        fprintf(stderr, "--dataset name.lmdb\n");
         exit(1);
     }
     uint64_t h264Offset = 0;
     uint64_t pdtsOffset = 0;
     uint64_t timeOffset = 0;
-    FILE *omov = fopen("omov.h264", "wb");
-    char buf[1024*1024];
     for (int i = 1; i != argc; ++i) {
-        FILE *f = fopen(argv[i], "rb");
+        if (argv[i][0] == '-') {
+            if (!strcmp(argv[i], "--dataset")) {
+                ++i;
+                if (!argv[i]) {
+                    fprintf(stderr, "--dataset requires filename.lmdb\n");
+                    exit(1);
+                }
+                datasetName = argv[i];
+                continue;
+            }
+            if (!strcmp(argv[i], "--dump")) {
+                ++i;
+                if (!argv[i]) {
+                    fprintf(stderr, "--dump requires type:filename\n");
+                    exit(1);
+                }
+                if (strlen(argv[i]) < 6 || argv[i][4] != ':') {
+                    fprintf(stderr, "--dump bad argument: %s\n", argv[i]);
+                    exit(1);
+                }
+                dump_chunk dc;
+                memcpy(dc.type, argv[i], 4);
+                dc.filename = &argv[i][5];
+                dumpChunks.push_back(dc);
+                continue;
+            }
+            fprintf(stderr, "unknown argument: '%s'\n", argv[i]);
+            goto usage;
+        } else {
+            filenameArgs.push_back(argv[i]);
+        }
+    }
+    if (!filenameArgs.size()) {
+        fprintf(stderr, "no input files specified\n");
+        goto usage;
+    }
+    for (auto const &path : filenameArgs) {
+        char const *cpath = path.c_str();
+        FILE *f = fopen(cpath, "rb");
         if (!f) {
-            perror(argv[i]);
+            perror(cpath);
             exit(1);
         }
-        check_header(f, argv[i]);
+        check_header(f, cpath);
         fseek(f, 0, 2);
         long len = ftell(f);
         fseek(f, 12, 0);
-        fprintf(stdout, "%s: %ld bytes\n", argv[i], len);
+        fprintf(stdout, "%s: %ld bytes\n", cpath, len);
         while (!feof(f) && !ferror(f)) {
             long pos = ftell(f);
             chunk_header ch;
@@ -125,21 +178,26 @@ int main(int argc, char const *argv[]) {
                 timeOffset += sc.size;
                 timeChunks.push_back(sc);
             }
-            if (!strncmp(ch.type, "h264", 4)) {
-                fread(buf, 1, ch.size, f);
-                fseek(f, (4 - (ch.size & 3))&3, 1);
-                fwrite(buf, 1, ch.size, omov);
-            } else {
-                fseek(f, (ch.size + 3) & ~3, 1);
-            }
+            fseek(f, (ch.size + 3) & ~3, 1);
         }
     }
-    fclose(omov);
 
     fprintf(stdout, "%ld h264 chunks size %ld\n%ld pdts chunks size %ld\n%ld time chunks size %ld\n",
             h264Chunks.size(), h264Offset, pdtsChunks.size(), pdtsOffset, timeChunks.size(), timeOffset);
     
-    generate_dataset();
+    int errors = 0;
+    for (auto const &dc : dumpChunks) {
+        if (!generate_requested_file(dc.type, dc.filename.c_str())) {
+            fprintf(stderr, "Could not generate '%s' of type '%.4s'\n", dc.filename.c_str(), dc.type);
+            ++errors;
+        }
+    }
+    if (datasetName.size()) {
+        if (!generate_dataset(datasetName.c_str())) {
+            fprintf(stderr, "Error generting dataset '%s'\n", datasetName.c_str());
+            ++errors;
+        }
+    }
 
-    return 0;
+    return errors;
 }
