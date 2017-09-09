@@ -1,2 +1,2 @@
-mktrain:	mktrain.cpp
-	g++ -o mktrain -g -std=gnu++11 mktrain.cpp -lavcodec -lavformat -lavutil
+build_training_database:	main.cpp
+	g++ -o build_training_database -g -std=gnu++11 main.cpp -lavcodec -lavformat -lavutil
