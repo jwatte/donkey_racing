@@ -47,7 +47,7 @@ extern "C" {
 #include "metrics.h"
 
 
-#define INLINE_HEADERS 1
+#define INLINE_HEADERS MMAL_TRUE
 #define SEGMENT_SECONDS 20
 //  10 == extreme quality, 40 == high compression
 #define QUANT_PARAM 16

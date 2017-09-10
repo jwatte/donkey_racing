@@ -82,6 +82,34 @@ void unwarp_image(void const *src, void *dst) {
     }
 }
 
+static inline TableInputCoord transform(float const *mat3x2, TableInputCoord const &ti) {
+    TableInputCoord ret = {
+        ti.sx * mat3x2[3] + ti.sy * mat3x2[4] + mat3x2[5],
+        ti.sx * mat3x2[0] + ti.sy * mat3x2[1] + mat3x2[2]
+    };
+    return ret;
+}
+
+void unwarp_transformed(void const *yp, void const *up, void const *vp, float const *mat3x2, void *dst) {
+    unsigned char const *y = (unsigned char const *)yp;
+    unsigned char const *u = (unsigned char const *)up;
+    unsigned char const *v = (unsigned char const *)vp;
+
+    float *dp1 = (float *)dst;
+    float *dp2 = dp1 + RECTIFIED_WIDTH * RECTIFIED_HEIGHT;
+    TableInputCoord const *ticp = &sTableInputCoords[0][0];
+    for (int yy = 0; yy < RECTIFIED_HEIGHT; ++yy) {
+        for (int xx = 0; xx < RECTIFIED_WIDTH; ++xx) {
+            TableInputCoord tic = transform(mat3x2, *ticp);
+            float dp1v = sample_y(y, tic);
+            float dp2v = sample_yuv(dp1v, u, v, tic);
+            *dp1++ = dp1v;
+            *dp2++ = dp2v;
+            ++ticp;
+        }
+    }
+}
+
 
 /* the table of data is included once here */
 #include "../calibrate_camera/table.cpp"
