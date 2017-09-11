@@ -21,6 +21,11 @@ static const float BYTE_TO_FLOAT = 1.0f / 255.0f;
 static const float CENTER_Y_FLOAT = ((CENTER_Y) * BYTE_TO_FLOAT);
 static const float CENTER_U_FLOAT = ((CENTER_U) * BYTE_TO_FLOAT);
 static const float CENTER_V_FLOAT = ((CENTER_V) * BYTE_TO_FLOAT);
+float GAIN_Y = 2.0f;
+float GAIN_U = 4.5f;
+float GAIN_V = 4.5f;
+
+static const float FLOAT_TO_BYTE = 255.0f;
 
 static inline float sample_y(unsigned char const *y, TableInputCoord const tic) {
     float y1f = floorf(tic.sy);
@@ -59,7 +64,7 @@ static inline float sample_yuv(float y, unsigned char const *u, unsigned char co
     d = v[SOURCE_WIDTH / 2 + 1];
     float vret = ((a * (1.0f - x1d) + b * x1d) * (1 - y1d) +
             (c * (1.0f - x1d) + d * x1d) * y1d) * BYTE_TO_FLOAT;
-    float ret = 1.25f - fabsf(y - CENTER_Y_FLOAT) * 1.5f - fabsf(uret - CENTER_U_FLOAT) * 3.0f - fabsf(vret - CENTER_V_FLOAT) * 3.0f;
+    float ret = 1.25f - fabsf(y - CENTER_Y_FLOAT) * GAIN_Y - fabsf(uret - CENTER_U_FLOAT) * GAIN_U - fabsf(vret - CENTER_V_FLOAT) * GAIN_V;
     return ret > 1.0f ? 1.0f : ret < 0.0f ? 0.0f : ret;
 }
 
@@ -90,21 +95,21 @@ static inline TableInputCoord transform(float const *mat3x2, TableInputCoord con
     return ret;
 }
 
-void unwarp_transformed(void const *yp, void const *up, void const *vp, float const *mat3x2, void *dst) {
+void unwarp_transformed_bytes(void const *yp, void const *up, void const *vp, float const *mat3x2, void *dst) {
     unsigned char const *y = (unsigned char const *)yp;
     unsigned char const *u = (unsigned char const *)up;
     unsigned char const *v = (unsigned char const *)vp;
 
-    float *dp1 = (float *)dst;
-    float *dp2 = dp1 + RECTIFIED_WIDTH * RECTIFIED_HEIGHT;
+    unsigned char *dp1 = (unsigned char *)dst;
+    unsigned char *dp2 = dp1 + RECTIFIED_WIDTH * RECTIFIED_HEIGHT;
     TableInputCoord const *ticp = &sTableInputCoords[0][0];
     for (int yy = 0; yy < RECTIFIED_HEIGHT; ++yy) {
         for (int xx = 0; xx < RECTIFIED_WIDTH; ++xx) {
             TableInputCoord tic = transform(mat3x2, *ticp);
             float dp1v = sample_y(y, tic);
             float dp2v = sample_yuv(dp1v, u, v, tic);
-            *dp1++ = dp1v;
-            *dp2++ = dp2v;
+            *dp1++ = (unsigned char)(FLOAT_TO_BYTE * dp1v);
+            *dp2++ = (unsigned char)(FLOAT_TO_BYTE * dp2v);
             ++ticp;
         }
     }

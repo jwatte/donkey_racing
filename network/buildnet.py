@@ -9,8 +9,9 @@ from caffe2.python import core, model_helper, net_drawer, workspace, visualize, 
 # you can change --caffe2_log_level=0 to --caffe2_log_level=-1
 core.GlobalInit(['caffe2', '--caffe2_log_level=0'])
 print("Necessities imported!")
-root_folder = "/usr/local/src/donkey_racing/network"
-data_folder = os.path.join(root_folder, 'data')
+root_folder = "/home/jwatte/trainingdata/donkey_racing/network"
+#data_folder = "/home/jwatte/trainingdata/2017-09-07-8am-park"
+data_folder = "/home/jwatte/trainingdata/temp"
 proto_folder = os.path.join(root_folder, 'proto')
 
 def AddInput(model, batch_size, db, db_type):
@@ -51,9 +52,10 @@ def AddAccuracy(model, output, label):
     return accuracy
 
 def AddTrainingOperators(model, output, label):
-    xent = model.LabelCrossEntropy([output, label], 'xent')
+    #xent = model.LabelCrossEntropy([output, label], 'xent')
+    xent = model.SigmoidCrossEntropyWithLogits([output, label], 'xent')
     loss = model.AveragedLoss(xent, "loss")
-    AddAccuracy(model, output, label)
+    #AddAccuracy(model, output, label)
     model.AddGradientOperators([loss])
     ITER = brew.iter(model, "iter")
     LR = model.LearningRate(
@@ -62,9 +64,11 @@ def AddTrainingOperators(model, output, label):
     for param in model.params:
         param_grad = model.param_to_grad[param]
         model.WeightedSum([param, ONE, param_grad, LR], param)
+    model.Checkpoint([ITER] + model.params, [],
+        db="checkpoint_%06d.lmdb", db_type="lmdb", every=50)
 
 def AddBookkeepingOperators(model):
-    model.Print('accuracy', [], to_file=1)
+    #model.Print('accuracy', [], to_file=1)
     model.Print('loss', [], to_file=1)
     for param in model.params:
         model.Summarize(param, [], to_file=1)
@@ -74,8 +78,8 @@ def build_networks():
     arg_scope = {"order": "NCHW"}
     train_model = model_helper.ModelHelper(name="donkey_train", arg_scope=arg_scope)
     data, label = AddInput(
-        train_model, batch_size=64,
-        db=os.path.join(data_folder, 'donkey-train-nchw-lmdb'),
+        train_model, batch_size=128,
+        db=os.path.join(data_folder, 'train'),
         db_type='lmdb')
     output = AddNetModel(train_model, data)
     AddTrainingOperators(train_model, output, label)
@@ -84,11 +88,11 @@ def build_networks():
     test_model = model_helper.ModelHelper(
         name="donkey_test", arg_scope=arg_scope, init_params=False)
     data, label = AddInput(
-        test_model, batch_size=100,
-        db=os.path.join(data_folder, 'donkey-test-nchw-lmdb'),
+        test_model, batch_size=32,
+        db=os.path.join(data_folder, 'test'),
         db_type='lmdb')
     output = AddNetModel(test_model, data)
-    AddAccuracy(test_model, output, label)
+    #AddAccuracy(test_model, output, label)
 
     deploy_model = model_helper.ModelHelper(
         name="donkey_deploy", arg_scope=arg_scope, init_params=False)
@@ -108,18 +112,6 @@ def save_protobufs(train_model, test_model, deploy_model):
     with open(os.path.join(proto_folder, "deploy_net.pbtxt"), 'w') as fid:
             fid.write(str(deploy_model.net.Proto()))
     print("Protocol buffers files have been created in your root folder: " + proto_folder)
-
-def train_model(train_model, iterations=200):
-    workspace.ResetWorkspace(root_folder)
-    workspace.RunNetOnce(train_model.param_init_net)
-    workspace.CreateNet(train_model.net, overwrite=True)
-    accuracy = np.zeros(iterations)
-    loss = np.zeros(iterations)
-    for i in range(iterations):
-        workspace.RunNet(train_model.net)
-        accuracy[i] = workspace.FetchBlob('accuracy')
-        loss[i] = workspace.FetchBlob('loss')
-        print('Iteration %d: Accuracy: %f, Loss: %f' % (i, accuracy[i], loss[i]))
 
 def save_trained_model(deploy_model):
     pe_meta = pe.PredictorExportMeta(
@@ -147,13 +139,39 @@ def run_inference(data, predict_net):
 save_protobufs(train, test, deploy)
 
 
-workspace.RunNetOnce(train.param_init_net)
-workspace.CreateNet(train.net, overwrite=True)
-a = np.zeros((1,2,149,59), np.float32)
-start = time.time()
-for i in range(0, 100):
-    i = run_inference(a, deploy.net)
-stop = time.time()
-print("Time per inference: %f seconds\n" % ((stop-start)/100.0,))
-print(repr(i))
+training=True
+train_iters=200
+
+if training:
+    workspace.RunNetOnce(train.param_init_net)
+    workspace.CreateNet(train.net, overwrite=True)
+    #accuracy = np.zeros(train_iters)
+    loss = np.zeros(train_iters)
+    testloss = np.zeros(train_iters)
+    for i in range(train_iters):
+        workspace.RunNet(train.net.Proto().name)
+        #accuracy[i] = workspace.FetchBlob('accuracy')
+        loss[i] = workspace.FetchBlob('loss')
+        if i % 10 == 0:
+            #workspace.RunNetOnce(test.net)
+            #testloss[i] = workspace.FetchBlob('loss')
+            print("iter %d loss %.3f testloss %.3f" % (i, loss[i], testloss[i]))
+    #print(repr(accuracy))
+    print(repr(loss))
+    save_trained_model(deploy.net)
+else:
+    a = np.zeros((1,2,149,59), np.float32)
+    a[0][0][100][30] = 1.0
+    a[0][0][50][30] = 1.0
+    a[0][0][100][20] = 1.0
+    a[0][0][50][20] = 1.0
+    workspace.FeedBlob("input", a)
+    workspace.RunNetOnce(train.param_init_net)
+    workspace.CreateNet(deploy.net, overwrite=True)
+    start = time.time()
+    for i in range(0, 100):
+        i = run_inference(a, deploy.net)
+    stop = time.time()
+    print("Time per inference: %f seconds\n" % ((stop-start)/100.0,))
+    print(repr(i))
 

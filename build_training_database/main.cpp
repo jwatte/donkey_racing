@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <random>
 
 extern "C" {
 
@@ -25,7 +26,14 @@ extern "C" {
 #include "math2.h"
 #include "../pilot/image.h"
 
-#include <caffe2/db/create_db_op.h>
+#define CAFFE2_LOG_THRESHOLD 1
+#include <caffe2/core/logging_is_not_google_glog.h>
+#include <caffe2/core/db.h>
+#include <caffe2/core/common.h>
+#include <caffe2/core/init.h>
+#include <caffe2/proto/caffe2.pb.h>
+#include <caffe2/core/logging.h>
+
 
 
 bool verbose = false;
@@ -80,6 +88,25 @@ std::list<dump_chunk> dumpChunks;
 std::list<std::string> filenameArgs;
 std::string datasetName;
 
+static bool is_dir(char const *path) {
+    struct stat st;
+    if (stat(path, &st)) {
+        return false;
+    }
+    if (!S_ISDIR(st.st_mode)) {
+        return false;
+    }
+    return true;
+}
+
+static bool exists(char const *path) {
+    struct stat st;
+    if (!lstat(path, &st)) {
+        return true;
+    }
+    return false;
+}
+
 void check_header(FILE *f, char const *name) {
     file_header fh;
     if ((12 != fread(&fh, 1, 12, f)) || strncmp(fh.type, "RIFF", 4) || strncmp(fh.subtype, "h264", 4)) {
@@ -106,6 +133,148 @@ char const *get_filename(FILE *f) {
         sprintf(ret, "%30s", p);
     }
     return ret;
+}
+
+
+int stretchData = 7;
+float stretchRotate = 0.03f;
+float stretchOffset = 2.5f;
+float testFraction = 0.1f;
+unsigned char *outputframe;
+int outputwidth;
+int outputheight;
+int outputplanes;
+size_t outputsize;
+static std::default_random_engine generator;
+static std::uniform_real_distribution<float> distribution;
+static auto stretch_random = std::bind(distribution, generator);
+static caffe2::TensorProtos protos;
+static caffe2::TensorProto *dataProto;
+static caffe2::TensorProto *labelProto;
+static int databaseKeyIndex;
+static int testNumFrames;
+static int trainNumFrames;
+std::unique_ptr<caffe2::db::DB> train_db;
+std::unique_ptr<caffe2::db::DB> test_db;
+std::unique_ptr<caffe2::db::Transaction> trainTransaction;
+std::unique_ptr<caffe2::db::Transaction> testTransaction;
+
+void begin_database_write(char const *output) {
+
+    get_unwarp_info(&outputsize, &outputwidth, &outputheight, &outputplanes);
+    outputsize = outputwidth * outputheight * outputplanes;
+    outputframe = (unsigned char *)malloc(outputsize);
+
+    protos = caffe2::TensorProtos();
+    dataProto = protos.add_protos();
+    dataProto->set_data_type(caffe2::TensorProto::BYTE);
+    dataProto->add_dims(outputplanes);
+    dataProto->add_dims(outputheight);
+    dataProto->add_dims(outputwidth);
+    labelProto = protos.add_protos();
+    labelProto->set_data_type(caffe2::TensorProto::FLOAT);
+    labelProto->add_dims(2);
+    labelProto->add_float_data(0);
+    labelProto->add_float_data(0);
+
+    mkdir(output, 0777);
+    if (!is_dir(output)) {
+        fprintf(stderr, "%s: could not create directory\n", output);
+        exit(1);
+    }
+    std::string path(output);
+    path += "/train";
+    if (exists(path.c_str())) {
+        fprintf(stderr, "%s: already exists, not overwriting\n", path.c_str());
+        exit(1);
+    }
+    if (verbose) {
+        fprintf(stderr, "Creating training database as '%s'\n", path.c_str());
+    }
+    train_db = caffe2::db::CreateDB("lmdb", path, caffe2::db::NEW);
+    trainTransaction = train_db->NewTransaction();
+
+    path = output;
+    path += "/test";
+    if (exists(path.c_str())) {
+        fprintf(stderr, "%s: already exists, not overwriting\n", path.c_str());
+        exit(1);
+    }
+    if (verbose) {
+        fprintf(stderr, "Creating test database as '%s'\n", path.c_str());
+    }
+    test_db = caffe2::db::CreateDB("lmdb", path, caffe2::db::NEW);
+    testTransaction = test_db->NewTransaction();
+}
+
+void end_database_write() {
+    if (verbose) {
+        fprintf(stderr, "closing databases\n");
+    }
+    trainTransaction->Commit();
+    trainTransaction.reset();
+    testTransaction->Commit();
+    testTransaction.reset();
+    train_db.reset();
+    test_db.reset();
+}
+
+void put_to_database(unsigned char const *frame, float const *label) {
+    dataProto->set_byte_data(frame, outputsize);
+    labelProto->set_float_data(0, label[0]);
+    labelProto->set_float_data(1, label[1]);
+
+    char dki[12];
+    sprintf(dki, "%08d", databaseKeyIndex);
+    ++databaseKeyIndex;
+    std::string keyname(dki);
+
+    std::string value;
+    protos.SerializeToString(&value);
+
+    if (stretch_random() < testFraction) {
+        testTransaction->Put(keyname, value);
+        ++testNumFrames;
+        if (!(testNumFrames & 511)) {
+            if (verbose) {
+                fprintf(stderr, "partial commit of test database at %d items\n", testNumFrames);
+            }
+            testTransaction->Commit();
+        }
+    } else {
+        trainTransaction->Put(keyname, value);
+        ++trainNumFrames;
+        if (!(trainNumFrames & 511)) {
+            if (verbose) {
+                fprintf(stderr, "partial commit of training database at %d items\n", trainNumFrames);
+            }
+            trainTransaction->Commit();
+        }
+    }
+}
+
+void database_frame(
+        int width, int height,
+        void const *y, int ylen,
+        void const *u, int ulen,
+        void const *v, int vlen,
+        float steer, float throttle)
+{
+    if (ylen != 640 || ulen != 320 || vlen != 320) {
+        fprintf(stderr, "sorry, database only works with 640x480 I420 format input frames\n");
+        exit(1);
+    }
+    float mat[6] = { 1, 0, 0, 0, 1, 0 };
+    unwarp_transformed_bytes(y, u, v, mat, outputframe);
+    float label[2] = { steer, throttle };
+    put_to_database(outputframe, label);
+    for (int i = 0; i != stretchData; ++i) {
+        m2_rotation(stretch_random() * 2 * stretchRotate - stretchRotate, mat);
+        mat[2] = stretch_random() * 2 * stretchOffset - stretchOffset;
+        mat[5] = stretch_random() * 2 * stretchOffset - stretchOffset;
+        unwarp_transformed_bytes(y, u, v, mat, outputframe);
+        put_to_database(outputframe, label);
+    }
 }
 
 bool generate_dataset(char const *output) {
@@ -140,6 +309,8 @@ bool generate_dataset(char const *output) {
     }
     AVPacket avp = { 0 };
     av_init_packet(&avp);
+
+    begin_database_write(output);
 
     //  loop
     auto curpdts = pdtsChunks.begin(), endpdts = pdtsChunks.end();
@@ -217,7 +388,7 @@ parse_more:
             avp.size = 0;
             avp.pts = pd.pts - ptsbase;
             avp.dts = pd.dts ? pd.dts - dtsbase : pd.pts - ptsbase;
-            int lenParsed = av_parser_parse2(parser, ctx, &avp.data, &avp.size, 
+            int lenParsed = av_parser_parse2(parser, ctx, &avp.data, &avp.size,
                     &readBuf[0], readBuf.size(), avp.pts, avp.dts, avp.pos);
             if (verbose) {
                 fprintf(stderr, "av_parser_parse2(): lenParsed %d size %d pointer %p readbuf 0x%p\n",
@@ -243,6 +414,13 @@ parse_more:
                                 frame->data[0], frame->linesize[0], frame->data[1], frame->linesize[1],
                                 frame->data[2], frame->linesize[2]);
                     }
+                    database_frame(
+                            frame->width, frame->height,
+                            frame->data[0], frame->linesize[0],
+                            frame->data[1], frame->linesize[1], 
+                            frame->data[2], frame->linesize[2],
+                            ts.steer, ts.throttle
+                            );
                     if (ctx->refcounted_frames) {
                         av_frame_unref(frame);
                     }
@@ -254,7 +432,7 @@ parse_more:
                     //  not a header
                     if (curh264->size > 128) {
                         if (verbose) {
-                            fprintf(stderr, "avcodec_receive_frame() error %d concatoffset %ld\n", 
+                            fprintf(stderr, "avcodec_receive_frame() error %d concatoffset %ld\n",
                                     err, curh264->concatoffset);
                         }
                         // return false;
@@ -270,7 +448,7 @@ parse_more:
         if (progress) {
             if (!--nprogress) {
                 double fraction = double(curh264->concatoffset) / maxconcatoffset;
-                fprintf(stderr, "%.30s: [%s%s] %6.2f%%\r", 
+                fprintf(stderr, "%.30s: [%s%s] %6.2f%%\r",
                         get_filename(curh264->file),
                         "==================================>" + int((1-fraction)*35),
                         "                                   " + int(fraction*35),
@@ -283,6 +461,8 @@ parse_more:
     if (progress) {
         fprintf(stderr, "\n");
     }
+
+    end_database_write();
 
     //  todo cleanup
     return true;
@@ -312,7 +492,7 @@ usage:
                 }
                 char const *dot = strrchr(argv[i], '.');
                 if (dot && !strcmp(dot, ".riff")) {
-                    //  Is this an existing .riff file? Likely a typo, forgetting 
+                    //  Is this an existing .riff file? Likely a typo, forgetting
                     //  to name the output dataset.
                     struct stat stbuf;
                     if (!stat(argv[i], &stbuf)) {
@@ -419,7 +599,7 @@ void slurp_files() {
             long pos = ftell(f);
 
             chunk_header ch;
-            long rd = fread(&ch, 1, 8, f); 
+            long rd = fread(&ch, 1, 8, f);
             if (8 != rd) {
                 if (rd != 0) {
                     perror("short read");
@@ -478,7 +658,7 @@ int main(int argc, char const *argv[]) {
     parse_arguments(argc, argv);
 
     slurp_files();
-   
+
     int errors = 0;
     for (auto const &dc : dumpChunks) {
         if (!generate_requested_file(dc.type, dc.filename.c_str())) {
@@ -496,7 +676,7 @@ int main(int argc, char const *argv[]) {
     struct timeval endtime = { 0 };
     gettimeofday(&endtime, 0);
 
-    double seconds = (endtime.tv_sec - starttime.tv_sec) + 
+    double seconds = (endtime.tv_sec - starttime.tv_sec) +
         (endtime.tv_usec - starttime.tv_usec) * 1e-6;
     if (progress || verbose) {
         fprintf(stderr, "%s in %dh %dm %.1fs\n",

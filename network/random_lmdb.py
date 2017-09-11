@@ -1,4 +1,4 @@
-from caffe2.proto import caffe2_pb2
+from cafe2.proto import caffe2_pb2
 import lmdb
 import numpy as np
 
