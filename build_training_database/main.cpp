@@ -34,10 +34,14 @@ extern "C" {
 #include <caffe2/proto/caffe2.pb.h>
 #include <caffe2/core/logging.h>
 
+#include "../stb/stb_image_write.h"
 
 
 bool verbose = false;
 bool progress = isatty(2);
+bool devmode = false;
+bool fakedata = false;
+int numfakeframes = 10000;
 uint64_t maxconcatoffset;
 
 
@@ -138,7 +142,7 @@ char const *get_filename(FILE *f) {
 
 int stretchData = 7;
 float stretchRotate = 0.03f;
-float stretchOffset = 2.5f;
+float stretchOffset = 3.0f;
 float testFraction = 0.1f;
 unsigned char *outputframe;
 int outputwidth;
@@ -253,7 +257,44 @@ void put_to_database(unsigned char const *frame, float const *label) {
     }
 }
 
+#define FIX_ROWS 20
+#define FIX_COLUMNS 40
+
+void magically_fix_labeling(int serial, void const *yy, float *st) {
+    unsigned char const *y = (unsigned char const *)yy + outputwidth*outputheight;
+    int nleft = 0;
+    int nright = 0;
+    for (int r = 0; r < FIX_ROWS; ++r) {
+        for (int c = 0; c < FIX_COLUMNS; ++c) {
+            if (y[r*outputwidth+c] > 60) {
+                nleft++;
+            }
+            if (y[(r+1)*outputwidth-c-1] > 60) {
+                nright++;
+            }
+        }
+    }
+    float steer = float(nright-nleft);
+    if (steer > -100 && steer < 100) {
+        steer = 0;
+    } else if (steer < 0) {
+        steer = (steer + 100) / 200.0f;
+    } else {
+        steer = (steer - 100) / 200.0f;
+    }
+    if (steer < -4) {
+        steer = -4;
+    }
+    if (steer > 4) {
+        steer = 4;
+    }
+    float throttle = 400.0f / (nright+nleft+100);
+    st[0] = steer;
+    st[1] = throttle;
+}
+
 void database_frame(
+        int serial,
         int width, int height,
         void const *y, int ylen,
         void const *u, int ulen,
@@ -267,6 +308,9 @@ void database_frame(
     float mat[6] = { 1, 0, 0, 0, 1, 0 };
     unwarp_transformed_bytes(y, u, v, mat, outputframe);
     float label[2] = { steer, throttle };
+    if (devmode) {
+        magically_fix_labeling(serial, outputframe, label);
+    }
     put_to_database(outputframe, label);
     for (int i = 0; i != stretchData; ++i) {
         m2_rotation(stretch_random() * 2 * stretchRotate - stretchRotate, mat);
@@ -274,7 +318,92 @@ void database_frame(
         mat[5] = stretch_random() * 2 * stretchOffset - stretchOffset;
         unwarp_transformed_bytes(y, u, v, mat, outputframe);
         put_to_database(outputframe, label);
+        if (devmode) {
+            if (!(serial & 127)) {
+                mkdir ("test_png", 0777);
+                char name[100];
+                sprintf(name, "test_png/%06d_%d_%.2f_%.2f.png", serial, i, label[0], label[1]);
+                stbi_write_png(name, outputwidth, outputheight, 1,
+                        (unsigned char const *)outputframe
+                        + outputwidth * outputheight, 0);
+            }
+        }
     }
+}
+
+unsigned char *fakeframe;
+
+
+void line(unsigned char *frame, int width, int height, float x1, float y1, float x2, float y2, unsigned char val) {
+    float d = sqrtf((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
+    float n = ceilf(d * 100);
+    for (float i = 0; i != n; i += 1) {
+        int x = floor((x1 + (x2-x1)*i/n) * outputwidth * 0.5f + outputwidth * 0.5f);
+        int y = floor((y1 + (y2-y1)*i/n) * outputheight);
+        if (x >= 0 && x < outputwidth && y >= 0 && y < outputheight) {
+            frame[x + (outputheight-y-1)*outputwidth] = val;
+        }
+    }
+}
+
+void plot_road(unsigned char *frame, float x, float y, float dir, int i) {
+    float s = sinf(dir);
+    float c = cosf(dir);
+    if (i & 8) {
+        line(frame+outputwidth*outputheight, outputwidth, outputheight,
+                x-0.05f*c, y+0.05f*s, x+0.05f*c, y-0.05f*s, 200);
+    }
+    line(frame+outputwidth*outputheight, outputwidth, outputheight, 
+            x+0.5f*c, y-0.45f*s, x+0.45f*c, y-0.5f*s, 100);
+    line(frame+outputwidth*outputheight, outputwidth, outputheight, 
+            x-0.45f*c, y+0.5f*s, x-0.5f*c, y+0.45f*s, 100);
+    if (i & 8) {
+        line(frame, outputwidth, outputheight,
+                x-0.05f*c, y+0.05f*s, x+0.05f*c, y-0.05f*s, 150);
+    }
+    line(frame, outputwidth, outputheight, 
+            x+0.5f*c, y-0.45f*s, x+0.45f*c, y-0.5f*s, 200);
+    line(frame, outputwidth, outputheight, 
+            x-0.45f*c, y+0.5f*s, x-0.5f*c, y+0.45f*s, 200);
+}
+
+void fake_database_frame(int frameno) {
+    float x = stretch_random() - 0.5f;
+    float steer = stretch_random() * 2 - 1;
+    float throttle = fabsf(steer) > 0.5f ? 1.2f - fabsf(steer) : 1.0f;
+    //steer = 0;
+    //throttle = 1;
+    if (!fakeframe) {
+        fakeframe = (unsigned char *)malloc(outputwidth * outputheight * outputplanes);
+    }
+    memset(fakeframe, 0, outputwidth * outputheight * outputplanes);
+    float dir = 0.0f;
+    float y = 0.0f;
+    for (int i = 0; i < 100; ++i) {
+        plot_road(fakeframe, x, y, dir, i+frameno);
+        dir = dir + steer * 0.02f;
+        float s = sinf(dir);
+        float c = cosf(dir);
+        x = x + s * 0.017f;
+        y = y + c * 0.017f;
+    }
+    float label[2] = { steer, throttle };
+    put_to_database(fakeframe, label);
+    if (!(frameno & 127)) {
+        mkdir("test_png", 0777);
+        char name[100];
+        sprintf(name, "test_png/%06d_%.3f_%.3f.png", frameno, steer, throttle);
+        stbi_write_png(name, outputwidth, outputheight, 1, fakeframe, 0);
+    }
+}
+
+bool generate_fake_dataset(char const *output) {
+    begin_database_write(output);
+    for (int i = 0; i != numfakeframes; ++i) {
+        fake_database_frame(i);
+    }
+    end_database_write();
+    return true;
 }
 
 bool generate_dataset(char const *output) {
@@ -415,6 +544,7 @@ parse_more:
                                 frame->data[2], frame->linesize[2]);
                     }
                     database_frame(
+                            frameno,
                             frame->width, frame->height,
                             frame->data[0], frame->linesize[0],
                             frame->data[1], frame->linesize[1], 
@@ -470,13 +600,15 @@ parse_more:
 
 void parse_arguments(int argc, char const *argv[]) {
 
-    if (argc == 1 || argv[0][0] == '-') {
+    if (argc == 1 || !strcmp(argv[1], "--help")) {
 usage:
         fprintf(stderr, "usage: mktrain [options] file1.riff file2.riff ...\n");
         fprintf(stderr, "--dump type:filename\n");
         fprintf(stderr, "--dataset name.lmdb\n");
         fprintf(stderr, "--verbose\n");
         fprintf(stderr, "--quiet\n");
+        fprintf(stderr, "--devmode\n");
+        fprintf(stderr, "--fakedata\n");
         exit(1);
     }
 
@@ -534,6 +666,16 @@ usage:
                 continue;
             }
 
+            if (!strcmp(argv[i], "--devmode")) {
+                devmode = true;
+                continue;
+            }
+
+            if (!strcmp(argv[i], "--fakedata")) {
+                fakedata = true;
+                continue;
+            }
+
             fprintf(stderr, "unknown argument: '%s'\n", argv[i]);
             goto usage;
         } else {
@@ -542,7 +684,12 @@ usage:
     }
 
     if (!filenameArgs.size()) {
-        fprintf(stderr, "no input files specified\n");
+        if (!fakedata) {
+            fprintf(stderr, "no input files specified -- did you need --fakedata?\n");
+            goto usage;
+        }
+    } else if (fakedata) {
+        fprintf(stderr, "can't use both input file names and --fakedata at the same time\n");
         goto usage;
     }
 }
@@ -667,9 +814,16 @@ int main(int argc, char const *argv[]) {
         }
     }
     if (datasetName.size()) {
-        if (!generate_dataset(datasetName.c_str())) {
-            fprintf(stderr, "Error generting dataset '%s'\n", datasetName.c_str());
-            ++errors;
+        if (fakedata) {
+            if (!generate_fake_dataset(datasetName.c_str())) {
+                fprintf(stderr, "Error generating fake dataset '%s'\n", datasetName.c_str());
+                ++errors;
+            }
+        } else {
+            if (!generate_dataset(datasetName.c_str())) {
+                fprintf(stderr, "Error generating dataset '%s'\n", datasetName.c_str());
+                ++errors;
+            }
         }
     }
 
