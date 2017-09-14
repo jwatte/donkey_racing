@@ -1,4 +1,4 @@
-update=Sat 26 Aug 2017 05:42:42 PM PDT
+update=9/13/2017 4:02:59 PM
 version=1
 last_client=kicad
 [pcbnew]
@@ -37,7 +37,7 @@ SpiceUseNetNumbers=0
 LabSize=60
 [eeschema]
 version=1
-LibDir=/usr/local/src/EDALibraries/KiCad/Schematics
+LibDir=C:/Users/jwatte/code/EDALibraries/KiCad/Schematics
 [eeschema/libraries]
 LibName1=power
 LibName2=device
@@ -82,3 +82,15 @@ LibName40=MF_Passives
 LibName41=MF_Sensors
 LibName42=MF_Switches
 LibName43=maxim
+LibName44=C:/Users/jwatte/code/EDALibraries/KiCad/Schematics/MF_Aesthetics
+LibName45=C:/Users/jwatte/code/EDALibraries/KiCad/Schematics/MF_Connectors
+LibName46=C:/Users/jwatte/code/EDALibraries/KiCad/Schematics/MF_Discrete_Semiconductor
+LibName47=C:/Users/jwatte/code/EDALibraries/KiCad/Schematics/MF_Displays
+LibName48=C:/Users/jwatte/code/EDALibraries/KiCad/Schematics/MF_Frequency_Control
+LibName49=C:/Users/jwatte/code/EDALibraries/KiCad/Schematics/MF_IC_Analog
+LibName50=C:/Users/jwatte/code/EDALibraries/KiCad/Schematics/MF_IC_Digital
+LibName51=C:/Users/jwatte/code/EDALibraries/KiCad/Schematics/MF_IC_Power
+LibName52=C:/Users/jwatte/code/EDALibraries/KiCad/Schematics/MF_LEDs
+LibName53=C:/Users/jwatte/code/EDALibraries/KiCad/Schematics/MF_Passives
+LibName54=C:/Users/jwatte/code/EDALibraries/KiCad/Schematics/MF_Sensors
+LibName55=C:/Users/jwatte/code/EDALibraries/KiCad/Schematics/MF_Switches

@@ -47,7 +47,7 @@ EELAYER 25 0
 EELAYER END
 $Descr A4 11693 8268
 encoding utf-8
-Sheet 1 2
+Sheet 1 3
 Title ""
 Date ""
 Rev ""
@@ -712,8 +712,6 @@ F 3 "" H 8900 4500 50  0000 C CNN
 	1    0    0    -1  
 $EndComp
 Wire Wire Line
-	9100 3600 9350 3600
-Wire Wire Line
 	9100 3700 9350 3700
 Wire Wire Line
 	9100 3800 9350 3800
@@ -1312,7 +1310,7 @@ F 3 "" H 8950 5350 50  0000 C CNN
 $EndComp
 Text Notes 8950 1650 0    59   ~ 0
 Raspberry Pi 3V is not 2.5V, but I need\nto keep it separate from Teensy 3.3V, and \nboth "3V3" and "3.3V" rails tie together, \nand I don't yet know how to define a new \n3V3B rail in KiCad. To clean up!
-Text Notes 5600 4950 0    39   ~ 0
+Text Notes 5500 3550 0    39   ~ 0
 If someone configures pins to drive into \neach other, don't burn out the ports, so \nhere's a current limiting resistor on the pins
 Wire Wire Line
 	9600 5200 9700 5200
@@ -1407,6 +1405,32 @@ NoConn ~ 9100 2900
 NoConn ~ 9100 4100
 Wire Wire Line
 	6900 3850 6900 4000
-NoConn ~ 9100 3600
-NoConn ~ 10150 3600
+$Sheet
+S 6550 5150 1200 1150
+U 59B9BC3F
+F0 "I2C Stuff" 60
+F1 "i2cstuff.sch" 60
+F2 "R_ID_SD" I R 7750 6100 60 
+F3 "R_ID_SC" I R 7750 5950 60 
+F4 "R_SDA" I R 7750 5600 60 
+F5 "R_SCL" I R 7750 5450 60 
+$EndSheet
+Wire Wire Line
+	7750 5450 8450 5450
+Wire Wire Line
+	7750 5600 8450 5600
+Wire Wire Line
+	7750 5950 8450 5950
+Wire Wire Line
+	7750 6100 8450 6100
+Wire Wire Line
+	9100 3600 9350 3600
+Text Label 7900 5950 0    60   ~ 0
+R_ID_SC
+Text Label 7900 6100 0    60   ~ 0
+R_ID_SD
+Text Label 7900 5450 0    60   ~ 0
+R_SCL
+Text Label 7900 5600 0    60   ~ 0
+R_SDA
 $EndSCHEMATC

@@ -47,7 +47,7 @@ EELAYER 25 0
 EELAYER END
 $Descr A4 11693 8268
 encoding utf-8
-Sheet 2 2
+Sheet 2 3
 Title ""
 Date ""
 Rev ""
@@ -216,7 +216,7 @@ Connection ~ 3450 3750
 Wire Wire Line
 	3800 4950 3800 4450
 Wire Wire Line
-	1300 4950 9200 4950
+	1300 4950 9900 4950
 Wire Wire Line
 	3450 4600 3450 5150
 Wire Wire Line
@@ -428,7 +428,7 @@ Connection ~ 8650 4250
 Wire Wire Line
 	8650 3650 8650 3700
 Wire Wire Line
-	7750 3650 9200 3650
+	7750 3650 9750 3650
 Wire Wire Line
 	9200 3500 9200 3950
 $Comp
@@ -848,4 +848,34 @@ Text Label 5900 2900 0    60   ~ 0
 VR_VI
 Text Notes 3250 7100 0    60   ~ 0
 Externally routed on/off buttons\ncan go here. Or tap power, although\nthe traces are not for high power!
+$Comp
+L CON_01X04_PTH_2.54MM J16
+U 1 1 59BA13A4
+P 10200 4050
+F 0 "J16" H 10200 4250 45  0000 L BNN
+F 1 "CON_01X04_PTH_2.54MM" H 10200 4150 45  0000 L BNN
+F 2 "MF_Connectors:MF_Connectors-PTH_2.54MM_01X04" H 10525 3665 20  0001 C CNN
+F 3 "" H 10200 4050 60  0000 C CNN
+F 4 "+5V" H 10825 4050 32  0000 R CNN "LABEL01"
+F 5 "GND" H 10825 3950 32  0000 R CNN "LABEL02"
+F 6 "+5V" H 10825 3850 32  0000 R CNN "LABEL03"
+F 7 "GND" H 10825 3750 32  0000 R CNN "LABEL04"
+	1    10200 4050
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	10100 4050 9750 4050
+Wire Wire Line
+	9750 3650 9750 4250
+Wire Wire Line
+	9750 4250 10100 4250
+Connection ~ 9750 4050
+Wire Wire Line
+	10100 4150 9900 4150
+Wire Wire Line
+	9900 4150 9900 4950
+Connection ~ 9200 4950
+Wire Wire Line
+	10100 4350 9900 4350
+Connection ~ 9900 4350
 $EndSCHEMATC
