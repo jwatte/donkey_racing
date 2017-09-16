@@ -211,7 +211,7 @@ if len(sys.argv) > 1:
     load_checkpoint = sys.argv[1]
 
 training=True
-train_iters=200
+train_iters=20000
 
 if training:
     train.RunAllOnGPU()
