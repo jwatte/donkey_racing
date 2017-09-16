@@ -39,7 +39,9 @@ static SteerControl steerControlData;
 
 
 void do_click(int mx, int my, int btn, int st) {
-
+    fprintf(stderr, "click detected %d %d %d %d; exiting\n", 
+            mx, my, btn, st);
+    exit(1);
 }
 
 void do_move(int x, int y, unsigned int btns) {

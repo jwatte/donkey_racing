@@ -18,6 +18,7 @@
 
 static FrameQueue *networkInput;
 static Pipeline *networkPipeline;
+bool gNetworkFailed;
 
 caffe2::Workspace gWorkspace[3];
 
@@ -31,6 +32,7 @@ static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *, int in
     }
 }
 
+#if 0
 std::map<std::string, float *> networkBlobs;
 
 bool load_network_db(char const *name) {
@@ -126,6 +128,9 @@ output = brew.fc(model, relu4, 'output', dim_in=128, dim_out=2)
     FC  ("fc5",   "FC",      "relu4", "output",128, 2);
 }
 
+#endif
+
+
 bool load_network(char const *name, FrameQueue *output) {
     if (!networkInput) {
         size_t size;
@@ -135,15 +140,18 @@ bool load_network(char const *name, FrameQueue *output) {
         assert(width == 149);
         assert(height == 59);
 
+#if 0
         if (!load_network_db(name)) {
-            return false;
-        }
-        for (int i = 0; i != 3; ++i) {
-            if (!instantiate_network(&gWorkspace[i])) {
-                fprintf(stderr, "Could not create network index %d\n", i);
-                return false;
+            gNetworkFailed = true;
+        } else {
+            for (int i = 0; i != 3; ++i) {
+                if (!instantiate_network(&gWorkspace[i])) {
+                    fprintf(stderr, "Could not create network index %d\n", i);
+                    gNetworkFailed = true;
+                }
             }
         }
+#endif
 
         networkInput = new FrameQueue(5, size, width, height, 8);
         networkPipeline = new Pipeline(process_network);
