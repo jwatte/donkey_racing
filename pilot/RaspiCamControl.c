@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <memory.h>
 #include <ctype.h>
 
+#if defined(__arm__)    //  raspberry pi, ghetto detection
 #include "interface/vcos/vcos.h"
 
 #include "interface/vmcs_host/vc_vchi_gencmd.h"
@@ -1712,4 +1713,6 @@ void raspicamcontrol_check_configuration(int min_gpu_mem)
    else
       vcos_log_error("Failed to run camera app. Please check for firmware updates\n");
 }
+
+#endif
 

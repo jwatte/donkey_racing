@@ -5,10 +5,13 @@ import sys
 import time
 import lmdb
 import shutil
+import traceback
 
 from caffe2.python import core, model_helper, net_drawer, workspace, visualize, brew
-from caffe2.proto import caffe2_pb2
 import caffe2.python.predictor.predictor_exporter as pe
+import caffe2.python.predictor.predictor_py_utils as pred_utils
+from caffe2.python.predictor_constants import predictor_constants as pc
+from caffe2.proto import caffe2_pb2
 
 # If you would like to see some really detailed initializations,
 # you can change --caffe2_log_level=0 to --caffe2_log_level=-1
@@ -69,7 +72,7 @@ def AddTrainingOperators(model, output, label):
     model.AddGradientOperators([loss])
     ITER = brew.iter(model, "iter")
     LR = model.LearningRate(
-        ITER, "LR", base_lr=-0.1, policy="step", stepsize=1, gamma=0.9997 )
+        ITER, "LR", base_lr=-0.08, policy="step", stepsize=1, gamma=0.99997 )
     ONE = model.param_init_net.ConstantFill([], "ONE", shape=[1], value=1.0)
     for param in model.params:
         param_grad = model.param_to_grad[param]
@@ -130,21 +133,39 @@ def save_protobufs(train_model, test_model, deploy_model):
     print("Protocol buffers files have been created in your root folder: " + proto_folder)
 
 def save_trained_model(deploy_model):
-    savepath = os.path.join(root_folder, "donkey_model.lmdb")
+    savepath = os.path.join(root_folder, "donkey_model_protos.lmdb")
     print('savepath = %s' % (savepath,))
-    shutil.rmtree(savepath)
-    LMDB_MAP_SIZE = 1 << 30
-    env = lmdb.open(savepath, 'w', map_size=LMDB_MAP_SIZE)
+    try:
+        shutil.rmtree(savepath)
+    except:
+        pass
+    LMDB_MAP_SIZE = 1 << 29
+    env = lmdb.open(savepath, map_size=LMDB_MAP_SIZE)
     with env.begin(write=True) as txn:
+        txn.put(':NET', deploy_model.net.Proto().SerializeToString())
         parameters = [str(b) for b in deploy_model.params]
         for i in parameters:
-            print(i)
-            txn.put(i, workspace.FetchBlob(i))
+            b = workspace.FetchBlob(i)
+            print(i + ": " + repr(b.shape))
+            tp = caffe2_pb2.TensorProto()
+            tp.dims.extend(b.shape)
+            tp.data_type = 1
+            flat = b.reshape(np.prod(b.shape))
+            tp.float_data.extend([x.item() for x in flat.flat])
+            txn.put(i, tp.SerializeToString())
     print("The deploy model is saved to: " + savepath)
 
 def load_model(pathname):
     workspace.ResetWorkspace(root_folder)
-    pathname = os.path.join(root_folder, "donkey_model.minidb")
+    pathname = os.path.join(root_folder, "donkey_model_protos.lmdb")
+    LMDB_MAP_SIZE = 1 << 29
+    env = lmdb.open(root_folder, map_size=LMDB_MAP_SIZE)
+    with env.begin(write=False) as txn:
+        for key, value in txn.cursor():
+            if key == ":NET":
+                nd = caffe_pb2.NetDef()
+                nd.SerializeFromString(value)
+                
     predict_net = pe.prepare_prediction_net(pathname, "minidb")
     return predict_net
 
@@ -163,8 +184,13 @@ device_opts.cuda_gpu_id = 0
 save_protobufs(train, test, deploy)
 
 
+load_checkpoint=None
+
+if len(sys.argv) > 1:
+    load_checkpoint = sys.argv[1]
+
 training=True
-train_iters=20000
+train_iters=200
 
 if training:
     train.RunAllOnGPU()
@@ -173,18 +199,30 @@ if training:
     workspace.FeedBlob('input', np.zeros((2,59,149)))
     workspace.CreateNet(deploy.net, overwrite=True)
     workspace.CreateNet(train.net, overwrite=True)
+    if load_checkpoint:
+        load = model_helper.ModelHelper(name="load_checkpoint")
+        load.Load([], [], db=load_checkpoint, db_type="lmdb", load_all=1, keep_device=1, absolute_path=0)
+        workspace.RunNetOnce(load.net)
+        workspace.FeedBlob('LR', np.array([0.03]))
     loss = np.zeros(train_iters)
+    start = time.time()
     for i in range(train_iters):
         workspace.RunNet(train.net.Proto().name)
+        if i == 0:
+            realstart = time.time()
         loss[i] = workspace.FetchBlob('loss')
         if i % 200 == 0:
             LR = workspace.FetchBlob('LR')
-            print("iter %d loss %.6f lr %.6f" % (i, loss[i], LR))
-    #print(repr(accuracy))
+            stop = time.time()
+            j = i
+            if j == 0: j = 1
+            sys.stderr.write("iter %d loss %.6f lr %.6f speed %.2f remain %.2f     \r" %
+                    (i, loss[i], LR, 200.0/(stop-start), (stop-realstart)/j*(train_iters-i)))
+            start = stop
     try:
         save_trained_model(deploy)
     except:
-        print('exception while saving model: ' + repr(sys.exc_info()))
+        print('exception while saving model:\n' + traceback.format_exc())
     print(loss)
 else:
     a = np.zeros((1,2,149,59), np.float32)

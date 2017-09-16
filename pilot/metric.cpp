@@ -1,10 +1,14 @@
 #include "metric.h"
-#include "interface/vcos/vcos.h"
 #include <sched.h>
 #include <assert.h>
+#include <string.h>
 
 
 static int64_t base_time =  -1;
+
+#if defined(__arm__)    //  raspberry pi ghetto detection
+
+#include "interface/vcos/vcos.h"
 
 uint64_t get_microseconds_base() {
     return vcos_getmicrosecs64();
@@ -16,6 +20,23 @@ uint64_t get_microseconds() {
     }
     return vcos_getmicrosecs64() - base_time;
 }
+#else
+
+#include <time.h>
+
+uint64_t get_microseconds_base() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+    return ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
+
+uint64_t get_microseconds() {
+    if (base_time == -1) {
+        base_time = get_microseconds_base();
+    }
+    return get_microseconds_base() - base_time;
+}
+#endif
 
 namespace metric {
 

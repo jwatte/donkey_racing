@@ -43,6 +43,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 #include <memory.h>
 
+#if defined(__arm__)
+
 #include "interface/vcos/vcos.h"
 
 #include "RaspiCLI.h"
@@ -153,3 +155,5 @@ const char *raspicli_unmap_xref(const int en, XREF_T *map, int num_refs)
    }
    return NULL;
 }
+#endif  //  __arm__
+

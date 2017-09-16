@@ -18,6 +18,7 @@
 #include <sstream>
 #include <set>
 
+#if defined(__arm__)
 #include "bcm_host.h"
 
 #include "GLES2/gl2.h"
@@ -1208,4 +1209,6 @@ namespace color {
     uint32_t const bgred = 0xff202040;
     uint32_t const bggreen = 0xff204020;
 }
+#endif  //  __arm__
+
 

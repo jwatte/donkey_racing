@@ -27,7 +27,7 @@ class Pipeline : public Reactive {
          * fail and nothing will be started.
          */
         enum { MAX_THREADS=4 };
-    private:
+    protected:
         static void *thread_fn(void *);
         void thread(int index);
         void react() override;

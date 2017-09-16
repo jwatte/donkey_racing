@@ -19,6 +19,7 @@
 
 #define VERSION_STRING __DATE__
 
+#if defined(__arm__)
 extern "C" {
 
 #include "bcm_host.h"
@@ -38,6 +39,8 @@ extern "C" {
 
 
 }
+#endif
+
 
 #include "RaspiCapture.h"
 #include <string>
@@ -46,6 +49,8 @@ extern "C" {
 #include "plock.h"
 #include "metrics.h"
 
+
+#if defined(__arm__)
 
 #define INLINE_HEADERS MMAL_TRUE
 #define SEGMENT_SECONDS 20
@@ -1381,4 +1386,5 @@ error:
  * We use the RaspiPreview code to get buffers of frame data.
  */
 
+#endif  //  __arm__
 

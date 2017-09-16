@@ -4,12 +4,19 @@ CFILES:=$(wildcard *.c)
 CPPFILES:=$(wildcard *.cpp)
 C_O:=$(patsubst %.c,obj/%.o,$(CFILES))
 CPP_O:=$(patsubst %.cpp,obj/%.o,$(CPPFILES))
-LIBS:=-L/opt/vc/lib -lvcos -lmmal -lmmal_core -lmmal_util -lbcm_host -lpthread -Wl,--no-whole-archive -L/opt/vc/lib/ -lbrcmGLESv2 -lbrcmEGL
+LIBS:=-lpthread -Wl,--no-whole-archive -lCaffe2_CPU -lglog
 OPT?=-O0
-CFLAGS:=-I/opt/vc/include -Wall -Werror $(OPT)
+CFLAGS:=-Wall -Werror $(OPT) -I/usr/local/include -I/usr/local/src/caffe2/third_party/eigen
 CPPFLAGS:=$(CFLAGS) -std=gnu++11
 TOOL_O:=$(patsubst %,obj/%.o,$(TOOLS))
 PILOT_O:=$(filter-out $(TOOL_O),$(C_O) $(CPP_O))
+ifeq ($(wildcard /opt/vc),)
+else
+CFLAGS+=-I/opt/vc/include
+CPPFLAGS+=-I/opt/vc/include
+LIBS+=-L/opt/vc/lib -lvcos -lmmal -lmmal_core -lmmal_util -lbcm_host -L/opt/vc/lib/ -lbrcmGLESv2 -lbrcmEGL
+endif
+
 
 
 # Some rules for automatically syntax checking vertex/fragment shader pairs

@@ -164,6 +164,7 @@ void update_comms() {
 }
 
 void do_idle() {
+    //  Keep only the latest frame
     Frame *fr = NULL;
     while (Frame *f2 = guiFromNetwork.beginRead()) {
         if (fr) {

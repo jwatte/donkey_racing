@@ -37,21 +37,28 @@ Counter Packet_TrimInfoCount("packet.triminfocount");
 static volatile bool collectRunning = false;
 static pthread_t collectThread;
 
+typedef long long unsigned int llu;
+
 static uint64_t dumpTime;
 static void dump_counters(int type, char const *name, MetricBase const *mb, void *cookie) {
     switch (type) {
         default:
         case 0:
             fprintf((FILE *)cookie, "%llu,%d,%s,%llu,%llu,%llu,%.5e\n",
-                    dumpTime, type, name, mb->time_, mb->count_, mb->value_.i, mb->sum_);
+                    (llu)dumpTime, type, name,
+                    (llu)mb->time_, (llu)mb->count_,
+                    (llu)mb->value_.i, mb->sum_);
             break;
         case 1:
             fprintf((FILE *)cookie, "%llu,%d,%s,%llu,%llu,%.5e,%.5e\n",
-                    dumpTime, type, name, mb->time_, mb->count_, mb->value_.d, mb->sum_);
+                    (llu)dumpTime, type, name,
+                    (llu)mb->time_, (llu)mb->count_,
+                    mb->value_.d, mb->sum_);
             break;
         case 2:
             fprintf((FILE *)cookie, "%llu,%d,%s,%llu,%llu,%d,%.5e\n",
-                    dumpTime, type, name, mb->time_, mb->count_, mb->value_.b ? 1 : 0, mb->sum_);
+                    (llu)dumpTime, type, name,
+                    (llu)mb->time_, (llu)mb->count_, mb->value_.b ? 1 : 0, mb->sum_);
             break;
     }
 }
