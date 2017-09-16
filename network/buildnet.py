@@ -13,6 +13,8 @@ import caffe2.python.predictor.predictor_py_utils as pred_utils
 from caffe2.python.predictor_constants import predictor_constants as pc
 from caffe2.proto import caffe2_pb2
 
+use_lmdb = False
+
 # If you would like to see some really detailed initializations,
 # you can change --caffe2_log_level=0 to --caffe2_log_level=-1
 core.GlobalInit(['caffe2', '--caffe2_log_level=0'])
@@ -132,27 +134,46 @@ def save_protobufs(train_model, test_model, deploy_model):
             fid.write(str(deploy_model.net.Proto()))
     print("Protocol buffers files have been created in your root folder: " + proto_folder)
 
+def write_block(fil, nam, info, blob, bsize):
+    fil.write("%s\n" % (nam,))
+    fil.write("%s\n" % (info,))
+    fil.write("%d\n" % (bsize,))
+    fil.write(blob)
+    fil.write("\n-\n")
+
 def save_trained_model(deploy_model):
-    savepath = os.path.join(root_folder, "donkey_model_protos.lmdb")
+    savepath = os.path.join(root_folder, "donkey_model_protos.crunk")
     print('savepath = %s' % (savepath,))
     try:
         shutil.rmtree(savepath)
     except:
         pass
-    LMDB_MAP_SIZE = 1 << 29
-    env = lmdb.open(savepath, map_size=LMDB_MAP_SIZE)
-    with env.begin(write=True) as txn:
-        txn.put(':NET', deploy_model.net.Proto().SerializeToString())
-        parameters = [str(b) for b in deploy_model.params]
-        for i in parameters:
-            b = workspace.FetchBlob(i)
-            print(i + ": " + repr(b.shape))
-            tp = caffe2_pb2.TensorProto()
-            tp.dims.extend(b.shape)
-            tp.data_type = 1
-            flat = b.reshape(np.prod(b.shape))
-            tp.float_data.extend([x.item() for x in flat.flat])
-            txn.put(i, tp.SerializeToString())
+    if use_lmdb:
+        LMDB_MAP_SIZE = 1 << 29
+        env = lmdb.open(savepath, map_size=LMDB_MAP_SIZE)
+        with env.begin(write=True) as txn:
+            txn.put(':NET', deploy_model.net.Proto().SerializeToString())
+            parameters = [str(b) for b in deploy_model.params]
+            for i in parameters:
+                b = workspace.FetchBlob(i)
+                print(i + ": " + repr(b.shape))
+                tp = caffe2_pb2.TensorProto()
+                tp.dims.extend(b.shape)
+                tp.data_type = 1
+                flat = b.reshape(np.prod(b.shape))
+                tp.float_data.extend([x.item() for x in flat.flat])
+                txn.put(i, tp.SerializeToString())
+    else:
+        with open(savepath, 'wb') as of:
+            of.write("crunk 1.0\n")
+            ss = deploy_model.net.Proto().SerializeToString()
+            write_block(of, ':NET', '', ss, len(ss))
+            parameters = [str(b) for b in deploy_model.params]
+            for i in parameters:
+                b = workspace.FetchBlob(i)
+                print(i + ": " + repr(b.shape))
+                write_block(of, i, repr(b.shape), b, b.size * b.itemsize)
+
     print("The deploy model is saved to: " + savepath)
 
 def load_model(pathname):
@@ -203,6 +224,7 @@ if training:
         load = model_helper.ModelHelper(name="load_checkpoint")
         load.Load([], [], db=load_checkpoint, db_type="lmdb", load_all=1, keep_device=1, absolute_path=0)
         workspace.RunNetOnce(load.net)
+        save_trained_model(deploy)
         workspace.FeedBlob('LR', np.array([0.03]))
     loss = np.zeros(train_iters)
     start = time.time()
