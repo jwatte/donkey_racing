@@ -8,7 +8,7 @@
 /* how yellow is it? */
 #define CENTER_U 128-32
 #define CENTER_V 128+12
-#define CENTER_Y 200
+#define CENTER_Y 160
 
 void get_unwarp_info(size_t *osize, int *owidth, int *oheight, int *oplanes) {
     *owidth = RECTIFIED_WIDTH;
@@ -65,7 +65,7 @@ static inline float sample_yuv(float y, unsigned char const *u, unsigned char co
     float vret = ((a * (1.0f - x1d) + b * x1d) * (1 - y1d) +
             (c * (1.0f - x1d) + d * x1d) * y1d) * BYTE_TO_FLOAT;
     float ret = 1.25f - fabsf(y - CENTER_Y_FLOAT) * GAIN_Y - fabsf(uret - CENTER_U_FLOAT) * GAIN_U - fabsf(vret - CENTER_V_FLOAT) * GAIN_V;
-    return ret > 1.0f ? 1.0f : ret < 0.0f ? 0.0f : ret;
+    return ret > 0.999f ? 0.999f : ret < 0.001f ? 0.001f : ret;
 }
 
 void unwarp_image(void const *src, void *dst) {

@@ -6,6 +6,7 @@ import time
 import lmdb
 import shutil
 import traceback
+import math
 
 from caffe2.python import core, model_helper, net_drawer, workspace, visualize, brew
 import caffe2.python.predictor.predictor_exporter as pe
@@ -21,7 +22,7 @@ core.GlobalInit(['caffe2', '--caffe2_log_level=0'])
 #root_folder = "/home/jwatte/trainingdata/donkey_racing/network"
 root_folder = "/home/jwatte/trainingdata"
 #data_folder = "/home/jwatte/trainingdata/2017-09-07-8am-park"
-data_folder = os.path.join(root_folder, 'temp')
+data_folder = os.path.join(root_folder, 'temp_oakland')
 proto_folder = os.path.join(root_folder, 'proto')
 
 print('root_folder=%s' % (root_folder,))
@@ -211,7 +212,7 @@ if len(sys.argv) > 1:
     load_checkpoint = sys.argv[1]
 
 training=True
-train_iters=20000
+train_iters=100000
 
 if training:
     train.RunAllOnGPU()
@@ -238,9 +239,17 @@ if training:
             stop = time.time()
             j = i
             if j == 0: j = 1
-            sys.stderr.write("iter %d loss %.6f lr %.6f speed %.2f remain %.2f     \r" %
-                    (i, loss[i], LR, 200.0/(stop-start), (stop-realstart)/j*(train_iters-i)))
+            st = workspace.FetchBlob('output')
+            steer = st[0][0]
+            lb = workspace.FetchBlob('label')
+            label = lb[0][0]
+            sys.stderr.write("iter %d loss %.6f lr %.6f speed %.2f remain %.2f   steer %.2f label %.2f   \r" %
+                    (i, loss[i], LR, 200.0/(stop-start), (stop-realstart)/j*(train_iters-i), steer, label))
+            if math.isnan(loss[i]) or math.isnan(steer):
+                    print('\nNaN detected -- model diverges. Emergency brake.')
+                    sys.exit(4)
             start = stop
+    print('\nFInished at %d iterations.' % (train_iters,))
     try:
         save_trained_model(deploy)
     except:

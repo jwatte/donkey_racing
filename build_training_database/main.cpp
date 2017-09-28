@@ -40,7 +40,17 @@ extern "C" {
 bool verbose = false;
 bool progress = isatty(2);
 bool devmode = false;
+bool dumppng = true;
 bool fakedata = false;
+float scaleSteer = 1.0f;
+float scaleThrottle = 1.0f;
+long skip = 0;
+
+float minSteer = 0;
+float maxSteer = 0;
+float minThrottle = 0;
+float maxThrottle = 0;
+
 int numfakeframes = 10000;
 uint64_t maxconcatoffset;
 
@@ -305,11 +315,39 @@ void database_frame(
         fprintf(stderr, "sorry, database only works with 640x480 I420 format input frames\n");
         exit(1);
     }
+    if (serial < skip) {
+    }
     float mat[6] = { 1, 0, 0, 0, 1, 0 };
     unwarp_transformed_bytes(y, u, v, mat, outputframe);
     float label[2] = { steer, throttle };
     if (devmode) {
         magically_fix_labeling(serial, outputframe, label);
+    }
+    if (label[0] < minSteer) {
+        minSteer = label[0];
+    }
+    if (label[0] > maxSteer) {
+        maxSteer = label[0];
+    }
+    if (label[0] < minThrottle) {
+        minThrottle = label[0];
+    }
+    if (label[0] > maxThrottle) {
+        maxThrottle = label[0];
+    }
+    label[0] *= scaleSteer;
+    label[1] *= scaleThrottle;
+    if (fabsf(label[0]) < 0.01) {
+        label[0] = 0;
+    }
+    if (fabsf(label[0]) > 10) {
+        label[0] = (label[0] > 0) ? 10 : -10;
+    }
+    if (label[1] < 0.1) {
+        label[1] = 0.1;
+    }
+    if (label[1] > 10) {
+        label[1] = 10;
     }
     put_to_database(outputframe, label);
     for (int i = 0; i != stretchData; ++i) {
@@ -318,7 +356,7 @@ void database_frame(
         mat[5] = stretch_random() * 2 * stretchOffset - stretchOffset;
         unwarp_transformed_bytes(y, u, v, mat, outputframe);
         put_to_database(outputframe, label);
-        if (devmode) {
+        if (devmode || dumppng) {
             if (!(serial & 127)) {
                 mkdir ("test_png", 0777);
                 char name[100];
@@ -368,6 +406,9 @@ void plot_road(unsigned char *frame, float x, float y, float dir, int i) {
 }
 
 void fake_database_frame(int frameno) {
+    if (frameno < skip) {
+        return;
+    }
     float x = stretch_random() - 0.5f;
     float steer = stretch_random() * 2 - 1;
     float throttle = fabsf(steer) > 0.5f ? 1.2f - fabsf(steer) : 1.0f;
@@ -603,12 +644,16 @@ void parse_arguments(int argc, char const *argv[]) {
     if (argc == 1 || !strcmp(argv[1], "--help")) {
 usage:
         fprintf(stderr, "usage: mktrain [options] file1.riff file2.riff ...\n");
-        fprintf(stderr, "--dump type:filename\n");
         fprintf(stderr, "--dataset name.lmdb\n");
-        fprintf(stderr, "--verbose\n");
-        fprintf(stderr, "--quiet\n");
+        fprintf(stderr, "--dump type:filename\n");
+        fprintf(stderr, "--scale-steer 1.0\n");
+        fprintf(stderr, "--scale-throttle 1.0\n");
+        fprintf(stderr, "--skip-frames 0\n");
         fprintf(stderr, "--devmode\n");
+        fprintf(stderr, "--dumppng\n");
         fprintf(stderr, "--fakedata\n");
+        fprintf(stderr, "--quiet\n");
+        fprintf(stderr, "--verbose\n");
         exit(1);
     }
 
@@ -654,6 +699,54 @@ usage:
                 continue;
             }
 
+            if (!strcmp(argv[i], "--scale-steer")) {
+                ++i;
+                if (!argv[i]) {
+                    fprintf(stderr, "--scale-steer requires scaling factor\n");
+                    exit(1);
+                }
+                char *s;
+                double sval = strtod(argv[i], &s);
+                if (!s || sval < 1e-6 || sval > 1e6 || std::isnan(sval)) {
+                    fprintf(stderr, "Invalid steer scale value: %f\n", sval);
+                    exit(1);
+                }
+                scaleSteer = sval;
+                continue;
+            }
+
+            if (!strcmp(argv[i], "--scale-throttle")) {
+                ++i;
+                if (!argv[i]) {
+                    fprintf(stderr, "--scale-throttle requires scaling factor\n");
+                    exit(1);
+                }
+                char *s;
+                double sval = strtod(argv[i], &s);
+                if (!s || sval < 1e-6 || sval > 1e6 || std::isnan(sval)) {
+                    fprintf(stderr, "Invalid throttle scale value: %f\n", sval);
+                    exit(1);
+                }
+                scaleThrottle = sval;
+                continue;
+            }
+
+            if (!strcmp(argv[i], "--skip-frames")) {
+                ++i;
+                if (!argv[i]) {
+                    fprintf(stderr, "--skip-frames requires scaling factor\n");
+                    exit(1);
+                }
+                char *s;
+                long sval = strtol(argv[i], &s, 10);
+                if (sval < 0 || sval > 10000) {
+                    fprintf(stderr, "Invalid skip frames count: %ld\n", sval);
+                    exit(1);
+                }
+                skip = sval;
+                continue;
+            }
+
             if (!strcmp(argv[i], "--verbose")) {
                 verbose = true;
                 progress = false;
@@ -668,6 +761,11 @@ usage:
 
             if (!strcmp(argv[i], "--devmode")) {
                 devmode = true;
+                continue;
+            }
+
+            if (!strcmp(argv[i], "--dumppng")) {
+                dumppng = true;
                 continue;
             }
 
@@ -823,6 +921,10 @@ int main(int argc, char const *argv[]) {
             if (!generate_dataset(datasetName.c_str())) {
                 fprintf(stderr, "Error generating dataset '%s'\n", datasetName.c_str());
                 ++errors;
+            }
+            if (progress || verbose) {
+                fprintf(stderr, "steer input range: %.2f - %.2f\n", minSteer, maxSteer);
+                fprintf(stderr, "throttle input range: %.2f - %.2f\n", minThrottle, maxThrottle);
             }
         }
     }
