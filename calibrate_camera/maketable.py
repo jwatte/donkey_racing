@@ -2,18 +2,14 @@ import sys
 import cv2
 import cPickle as pickle
 import numpy as np
+import localcrop
 
 cdata = pickle.load(open("calibrate.pkl", "rb"))
 fullx = cdata['mapx']
 fully = cdata['mapy']
 
 # make sure parameters here match with show.py !
-x = 96
-y = 63
-w = 640-2*x # 448, div3 = 149
-h = 480-2*y # 354, div2 = 177, div3 = 59
-yoffset = -70 # change this if you want to crop higher up or lower down
-            # larger number means further down
+(x, y, w, h, yoffset) = localcrop.params()
 
 scaledown = 3
 

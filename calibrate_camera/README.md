@@ -6,8 +6,8 @@
 
   2) Verify that the images have nice and straight gridlines. If the detected
   grid jumps around in the image. remove it. Press space to mark an image 
-  good, anything else to mark it bad. You must manually remove the images 
-  later; the marking is just to create a textual log.
+  good and keep it, backspace to mark it bad and delete it (renames it to 
+  "backup.png" so you can undo this, until that image gets overwritten.) You
 
     python verify_images.py *.png
 
@@ -17,7 +17,8 @@
     python calibrate_camera.py *.png
   
   This generates the calibrate.pkl file. (It will overwrite any previous such 
-  file so make backups if you don't want this!)
+  file so make backups if you don't want this!) This will ignore any image 
+  named backup.png, btw.
 
   4) Verify that a "good chunk" of the image is usable -- you want the edges 
   to bend in with black, and perhaps even some mirroring, but if there are 

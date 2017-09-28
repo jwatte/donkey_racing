@@ -2,6 +2,7 @@
 import cv2
 import time
 
+NUM_NEEDED=15
 cap = cv2.VideoCapture(0)
 cap.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT, 480)
@@ -30,7 +31,7 @@ for i in range(0, 30):
         images.append(im0)
     else:
         print("oops, no checkerboard detected")
-    if len(images) >= 16:
+    if len(images) >= NUM_NEEDED:
         break
 cap.release()
 

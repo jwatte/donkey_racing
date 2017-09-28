@@ -4,6 +4,7 @@ import sys
 import cv2
 import cPickle as pickle
 import numpy as np
+import localcrop
 
 if sys.argv[1].find(".pkl") != -1:
     src = np.array(pickle.load(open(sys.argv[1], "rb")))
@@ -12,12 +13,8 @@ else:
 cdata = pickle.load(open("calibrate.pkl", "rb"))
 dst = cv2.remap(src, cdata['mapx'], cdata['mapy'], cv2.INTER_LINEAR)
 x, y, w, h = (cdata['x'], cdata['y'], cdata['w'], cdata['h'])
-x = 96
-y = 63
-w = 640-2*x # 448, div3 = 149
-h = 480-2*y # 354, div2 = 177, div3 = 59
-yoffset = -70 # change this if you want to crop higher up or lower down
-            # larger number means further down
+# override for ROI
+(x, y, w, h, yoffset) = localcrop.params()
 # only the bottom half of the image is interesting
 crp = dst[y+(h/2)+yoffset:(y+h)+yoffset,x:(x+w)]
 sml = cv2.resize(crp, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)

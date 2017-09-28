@@ -1,5 +1,7 @@
 *.bak
 *.bck
+*.pyc
+*.pyo
 *.o
 *.so
 *.a

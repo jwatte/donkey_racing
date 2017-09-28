@@ -19,13 +19,14 @@ criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
 print("loading images")
 for i in images:
+    if (i == 'backup.png'):
+        continue
     print(i)
     im = cv2.imread(i)
     gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
     ret, corners = cv2.findChessboardCorners(gray, (8, 6), None)
     if ret == True:
         cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-        slp = 10000
     else:
         print("Could not find chessboard in image " + i)
         print("Make sure that you verify images and sift out bad images first")
@@ -35,7 +36,8 @@ for i in images:
 
 print("Loaded %d images; calibrating" % (len(images),))
 
-ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],
+            None, flags=cv2.CALIB_USE_INTRINSIC_GUESS)
 h, w = im.shape[:2]
 newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
 print("roi=" + repr(roi) + "; newcameramtx=" + repr(newcameramtx))
@@ -52,8 +54,10 @@ print("Done calibrating; here's an undistorted image")
 
 dst = cv2.remap(im, mapx, mapy, cv2.INTER_LINEAR)
 x, y, w, h = roi
-dst = dst[y:h+h, x:x+w]
-cv2.imshow('cropped, rectified, %dx%d' % (w, h), dst)
+print("roi="+repr(roi))
+#dst = dst[y:h+h, x:x+w] # crop
+cv2.rectangle(dst, (x,y), (x+w,y+h), (255,0,255), 1)
+cv2.imshow('rectified', dst)
 cv2.waitKey(30000)
 cv2.destroyAllWindows()
 
