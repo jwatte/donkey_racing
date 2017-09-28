@@ -392,13 +392,13 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
         Encoder_BufferSize.sample(bytes_written);
 
         if (pstate->shouldRecord) {
+            //  keyframe?
             if (buffer->flags & MMAL_BUFFER_HEADER_FLAG_CONFIG) {
+                //  start each new segment on a keyframe, so close if we've filled the time segment size
                 if (pData->pstate->segmentSize && (current_time > pData->segment_start_time + pData->pstate->segmentSize)) {
                     if (pData->file_handle) {
                         fclose(pData->file_handle);
                         pData->file_handle = NULL;
-                        pData->infobuf_size = 0;
-                        pData->segment_start_time = 0;
                     }
                     pData->segment_start_time = current_time;
                 }
@@ -407,18 +407,17 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
                     pData->pts_base = (buffer->pts == MMAL_TIME_UNKNOWN) ? 0 : buffer->pts;
                     pData->dts_base = (buffer->dts == MMAL_TIME_UNKNOWN) ? 0 : buffer->dts;
                     pData->segment_start_time = current_time;
+                    pData->infobuf_size = 0;
+                    pData->segment_start_time = 0;
                 }
             }
-            if (pData->file_handle != NULL && buffer->length)
-            {
+            //  If I have a file and have data, write data to the file!
+            if (pData->file_handle != NULL && buffer->length) {
                 mmal_buffer_header_mem_lock(buffer);
-                if(buffer->flags & MMAL_BUFFER_HEADER_FLAG_CODECSIDEINFO)
-                {
+                if(buffer->flags & MMAL_BUFFER_HEADER_FLAG_CODECSIDEINFO) {
                     //We do not want to save inlineMotionVectors...
                     bytes_written = buffer->length;
-                }
-                else
-                {
+                } else {
                     bytes_written = buffer->length;
                     if (!write_timeinfo_chunk(pData->file_handle, "time", pData->infobuf, pData->infobuf_size)) {
                         bytes_written = 0;
