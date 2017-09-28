@@ -15,7 +15,7 @@ cv2.waitKey(1)
 cv2.waitKey(1)
 cv2.waitKey(5000)
 print("press a key for each picture (or wait 3 seconds)")
-for i in range(0, 20):
+for i in range(0, 30):
     cv2.waitKey(3000)
     print("capture")
     s, im0 = cap.read()
@@ -30,7 +30,7 @@ for i in range(0, 20):
         images.append(im0)
     else:
         print("oops, no checkerboard detected")
-    if len(images) >= 9:
+    if len(images) >= 16:
         break
 cap.release()
 
