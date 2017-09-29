@@ -17,6 +17,8 @@ from caffe2.proto import caffe2_pb2
 use_lmdb = False
 training = True
 train_iters = 1000000
+BATCH_SIZE=96
+LEARN_RATE=0.05
 
 
 # If you would like to see some really detailed initializations,
@@ -42,31 +44,32 @@ def AddInput(model, batch_size, db, db_type):
     return data, label
 
 def AddNetModel(model, data):
-    # 180x60 -> 178x58
-    conv1 = brew.conv(model, data, 'conv1', dim_in=1, dim_out=8, kernel=3)
-    # 178x58 -> 89x29
+    # 182x70 -> 180x68
+    conv1 = brew.conv(model, data, 'conv1', dim_in=1, dim_out=32, kernel=3)
+    # 180x68 -> 90x34
     pool1 = brew.max_pool(model, conv1, 'pool1', kernel=2, stride=2)
     relu1 = brew.relu(model, pool1, 'relu1')
-    # 89x29 -> 86x26
-    conv2 = brew.conv(model, relu1, 'conv2', dim_in=8, dim_out=16, kernel=4)
-    # 86x26 -> 43x13
+    # 90x34 -> 88x32
+    conv2 = brew.conv(model, relu1, 'conv2', dim_in=32, dim_out=48, kernel=3)
+    # 88x32 -> 44x16
     pool2 = brew.max_pool(model, conv2, 'pool2', kernel=2, stride=2)
     relu2 = brew.relu(model, pool2, 'relu2')
-    # 43x13 -> 40x10
-    conv3 = brew.conv(model, relu2, 'conv3', dim_in=16, dim_out=24, kernel=4)
-    # 40x10 -> 20x5
+    # 44x16 -> 40x12
+    conv3 = brew.conv(model, relu2, 'conv3', dim_in=48, dim_out=64, kernel=5)
+    # 40x12 -> 20x6
     pool3 = brew.max_pool(model, conv3, 'pool3', kernel=2, stride=2)
     relu3 = brew.relu(model, pool3, 'relu3')
-    # 20x5 -> 18x3
-    conv4 = brew.conv(model, relu3, 'conv4', dim_in=24, dim_out=48, kernel=3)
-    # 18x3 -> 17x2
-    pool4 = brew.max_pool(model, conv4, 'pool4', kernel=2)
+    # 20x6 -> 18x4
+    conv4 = brew.conv(model, relu3, 'conv4', dim_in=64, dim_out=80, kernel=3)
+    # 18x4 -> 9x2
+    pool4 = brew.max_pool(model, conv4, 'pool4', kernel=2, stride=2)
     relu4 = brew.relu(model, pool4, 'relu4')
-    # 17x2 -> 128
-    fc5 = brew.fc(model, relu4, 'fc5', dim_in=17*2*48, dim_out=128)
+    # 256 FC
+    fc5 = brew.fc(model, relu4, 'fc5', dim_in=9*2*80, dim_out=256)
     relu5 = brew.relu(model, fc5, 'relu5')
-    # 128 -> 2
-    output = brew.fc(model, relu5, 'output', dim_in=128, dim_out=2)
+    fc6 = brew.fc(model, relu5, 'fc6', dim_in=256, dim_out=64)
+    relu6 = brew.relu(model, fc6, 'relu6')
+    output = brew.fc(model, relu6, 'output', dim_in=64, dim_out=2)
     return output
 
 def AddAccuracy(model, output, label):
@@ -87,7 +90,7 @@ def AddTrainingOperators(model, output, label):
     if stepsize > 25:
         stepsize = 25
     LR = model.LearningRate(
-        ITER, "LR", base_lr=-0.06, policy="step", stepsize=1, gamma=0.99997 )
+        ITER, "LR", base_lr=LEARN_RATE, policy="step", stepsize=1, gamma=0.99997 )
     ONE = model.param_init_net.ConstantFill([], "ONE", shape=[1], value=1.0)
     for param in model.params:
         param_grad = model.param_to_grad[param]
@@ -108,7 +111,7 @@ def build_networks():
     dbpath = os.path.join(data_folder, 'train')
     print('dbpath = %s' % (dbpath,))
     data, label = AddInput(
-        train_model, batch_size=64,
+        train_model, batch_size=BATCH_SIZE,
         db=dbpath,
         db_type='lmdb')
     output = AddNetModel(train_model, data)

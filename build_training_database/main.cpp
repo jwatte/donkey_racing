@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <sys/time.h>
+#include <math.h>
 
 #include <list>
 #include <string>
@@ -42,6 +43,7 @@ bool progress = isatty(2);
 bool devmode = false;
 bool dumppng = true;
 bool fakedata = false;
+bool computelabels = false;
 float scaleSteer = 1.0f;
 float scaleThrottle = 1.0f;
 long skip = 0;
@@ -122,6 +124,46 @@ static bool exists(char const *path) {
     }
     return false;
 }
+
+int fc_w = 0;
+int fc_h = 0;
+unsigned char *fc_ptr = nullptr;
+
+void mkfalse(unsigned char *d, unsigned char ix) {
+    if (ix == 0) {
+        d[0] = d[1] = d[2] = 0;
+        return;
+    }
+    float s1 = sinf(ix);
+    float s2 = sinf(ix + 2.1f);
+    float s3 = sinf(ix - 2.1f);
+    float k = 0.75f - ix / 255.0;
+    float r = k + s1;
+    float g = k + s2;
+    float b = k + s3;
+    d[0] = (r > 1.0f) ? 255 : (r < 0.0f) ? 0 : (unsigned char)r;
+    d[1] = (g > 1.0f) ? 255 : (g < 0.0f) ? 0 : (unsigned char)g;
+    d[2] = (b > 1.0f) ? 255 : (b < 0.0f) ? 0 : (unsigned char)b;
+}
+
+void write_false_color(char const *name, int width, int height, unsigned char const *frame) {
+    if (fc_w != width || fc_h != height || !fc_ptr) {
+        if (fc_ptr) {
+            free(fc_ptr);
+        }
+        fc_ptr = (unsigned char *)malloc(width * height * 3);
+        fc_w = width;
+        fc_h = height;
+    }
+    unsigned char *d = fc_ptr;
+    for (int cnt = 0, n = width * height; cnt != n; ++cnt) {
+        mkfalse(d, *frame);
+        ++frame;
+        d += 3;
+    }
+    stbi_write_png(name, width, height, 3, fc_ptr, 0);
+}
+
 
 void check_header(FILE *f, char const *name) {
     file_header fh;
@@ -305,6 +347,227 @@ void magically_fix_labeling(int serial, void const *yy, float *st) {
     st[1] = throttle;
 }
 
+void histogram(char const *name, int width, int height, unsigned char const *data) {
+    int count[256] = { 0 };
+    for (int i = 0, cnt = width * height; i != cnt; ++i) {
+        count[*data]++;
+        ++data;
+    }
+    fprintf(stderr, "%s: ", name);
+    for (int i = 0; i < 256; ++i) {
+        if (count[i]) {
+            fprintf(stderr, "%d:%d ", i, count[i]);
+        }
+    }
+    fprintf(stderr, "\n");
+}
+
+unsigned char *cl_temp;
+
+void compute_labels_cv(
+        int serial,
+        void const *y,
+        unsigned char const *frame,
+        float *label)
+{
+    int const opw = outputwidth;
+    int const oph = outputheight;
+    //  calculate statistics on the input image
+    double avg = 0;
+    double avg2 = 0;
+    int count = opw * oph;
+    for (unsigned char const *ptr = frame, *end = frame + count;
+            ptr != end; ++ptr) {
+        avg += *ptr;
+        avg2 += *ptr * *ptr;
+    }
+    double var = (avg2 - avg * avg / count) / count;
+    double sdev = sqrt(var);
+    avg = avg / count;
+
+    //  threshold at 1.8 sdev above average (todo: is that about right?)
+    unsigned char thresh = (unsigned char)(avg + 1.8 * sdev);
+    if ((thresh < avg) || (thresh > (255 + avg) / 2)) {
+        //  if sdev ends up being wildly mis-behaved, revert to a 
+        //  rule of thumb
+        if (verbose) {
+            fprintf(stderr, "avg %.1f sdev %.1f thresh %d; adjusting to %.1f\n",
+                    avg, sdev, thresh, (255 + avg) / 2);
+        }
+        thresh = (255 + avg) / 2;
+    }
+    if (cl_temp == nullptr) {
+        cl_temp = (unsigned char *)malloc(count);
+    }
+    unsigned char *dst = cl_temp;
+    int nfound = 0;
+    for (unsigned char const *ptr = frame, *end = frame + count; 
+            ptr != end; ++ptr) {
+        unsigned char c = *ptr;
+        if (c <= thresh) {
+            *dst = 0;
+        } else  {
+            *dst = 255;
+            ++nfound;
+        }
+        ++dst;
+    }
+    if (verbose) {
+        fprintf(stderr, "nfound=%d\n", nfound);
+        stbi_write_png("thresh.png", opw, oph, 1, cl_temp, 0);
+    }
+
+    //  cluster the identified samples
+    unsigned char next = 0;
+    for (int r = 0; r != oph; ++r) {
+        unsigned char *s = cl_temp + r * opw;
+        unsigned char left = 0;
+        unsigned char top = 0;
+        for (int c = 0; c != opw; ++c) {
+            if (*s) {
+                if (r > 0) {
+                    top = s[-opw];
+                } else {
+                    top = 0;
+                }
+                if (top) {
+                    *s = top;
+                    if (left && (left != top)) {
+                        //  merge! this is a very slow implementation
+                        //  memory of who-merges-with-who in a 256 element table
+                        //  and a single pass at the end would be better
+                        if (verbose) {
+                            fprintf(stderr, "merging %ld pix from %d to %d\n",
+                                    (long)(s - cl_temp), left, top);
+                        }
+                        for (unsigned char *q = cl_temp; q != s; ++q) {
+                            if (*q == left) {
+                                *q = top;
+                            }
+                        }
+                    }
+                } else if (left) {
+                    *s = left;
+                } else {
+                    if (next == 254) {
+                        fprintf(stderr, "OOPS! Too many clusters\n");
+                    }
+                    if (next < 255) {
+                        ++next;
+                    }
+                    *s = next;
+                }
+                left = *s;
+            } else {
+                left = 0;
+            }
+            ++s;
+        }
+    }
+    if (verbose) {
+        histogram("clusters", opw, oph, cl_temp);
+        write_false_color("fakecolor.png", opw, oph, cl_temp);
+    }
+
+    //  calculate statistics per cluster
+    int counts[256] = { 0 };
+    double xs[256] = { 0.0 };
+    double ys[256] = { 0.0 };
+    double xs2[256] = { 0.0 };
+    double xys[256] = { 0.0 };
+    for (int r = 0; r != oph; ++r) {
+        unsigned char *p = cl_temp + r * opw;
+        for (int c = 0; c != opw; ++c) {
+            unsigned char ix = *p;
+            if (ix) {
+                counts[ix] += 1;
+                double x = (c - opw/2);
+                double y = (r - oph/2);
+                xs[ix] += x;
+                ys[ix] += y;
+                xs2[ix] += x * x;
+                xys[ix] += x * y;
+            }
+            ++p;
+        }
+    }
+
+    //  what constitutes a "big enough" cluster?
+    int const cnt_thresh = 12;
+    double xavg[256] = { 0.0 };
+    double yavg[256] = { 0.0 };
+    //double lr_a[256] = { 0.0 };
+    double lr_b[256] = { 0.0 };
+    double votes = 0.0;
+    double votecount = 0.0;
+    for (int i = 0; i != 256; ++i) {
+        xavg[i] = (counts[i] >= cnt_thresh) ? xs[i] / counts[i] : 0.0;
+        yavg[i] = (counts[i] >= cnt_thresh) ? ys[i] / counts[i] : 0.0;
+        counts[i] = (counts[i] >= cnt_thresh) ? counts[i] : 0;
+        if (counts[i]) {
+            // lr_a[i] = (ys[i] * xs2[i] - xs[i] * xys[i]) /
+            //     (counts[i] * xs2[i] - xs[i] * xs[i]);
+            double denominator = (counts[i] * xs2[i] - xs[i] * xs[i]);
+            if (fabs(denominator) < 1e-5) {
+                lr_b[i] = 1e10;
+            } else {
+                lr_b[i] = (counts[i] * xys[i] - xs[i] * ys[i]) / denominator;
+            }
+            double direction = lr_b[i];
+            if (std::isnan(direction)) {
+                fprintf(stderr, "direction NaN: %.1f i=%d, counts[i]=%d\n",
+                        direction, i, counts[i]);
+            }
+            //  TODO: magic constant
+            double power = counts[i] / (yavg[i] + oph/2 + 10);
+            if (fabs(direction) < 1e-2) {
+                //  horizontal line? Turn right.
+                votes += 0.25 * power;
+                votecount += power;
+            } else {
+                if (fabs(direction) > 1e2) {
+                    //  Too vertical to be numerically reliable, but we 
+                    //  know that vertical on the left means turn left, 
+                    //  and vice versa.
+                    votes += xavg[i] / (opw/2) * power;
+                    votecount += power;
+                } else {
+                    //  TODO: magic constant
+                    double straight = -xavg[i] / (opw/2 + (oph/2 + yavg[i]) * 5);
+                    direction = atan(1.0 / direction) - straight;
+                    votes += direction * power;
+                    votecount += power;
+                }
+            }
+            if (std::isnan(votes) || std::isnan(votecount)) {
+                fprintf(stderr,
+                        "NaN in votes %.1f / votecount %.1f at iteration %d in serial %d\n",
+                        votes, votecount, i, serial);
+            }
+        }
+    }
+
+    if (std::isnan(votes) || std::isnan(votecount)) {
+        fprintf(stderr, "Serial %d, NaN voting!\n", serial);
+        goto dump_stuff;
+    }
+    if (votecount <= 0.01) {
+        fprintf(stderr, "Serial %d: no clusters detected?\n", serial);
+dump_stuff:
+        char name[200];
+        sprintf(name, "png_test/no_cluster_%d_output.png", serial);
+        write_false_color(name, opw, oph, cl_temp);
+        sprintf(name, "png_test/no_cluster_%d_input.png", serial);
+        stbi_write_png(name, opw, oph, 1, frame, 0);
+    }
+    label[0] = (votecount > 0.01) ? (votes / votecount) : 0.25;
+    label[1] = 0.5 / (fabs(label[0]) + 0.5);
+    if (std::isnan(label[0]) || std::isnan(label[1])) {
+        fprintf(stderr, "NaN in compute_labels_cv()!\n");
+        abort();
+    }
+}
+
 void database_frame(
         int serial,
         int width, int height,
@@ -322,6 +585,9 @@ void database_frame(
     float mat[6] = { 1, 0, 0, 0, 1, 0 };
     unwarp_transformed_bytes(y, u, v, mat, outputframe);
     float label[2] = { steer, throttle };
+    if (computelabels) {
+        compute_labels_cv(serial, y, outputframe, label);
+    }
     if (devmode) {
         magically_fix_labeling(serial, outputframe, label);
     }
@@ -367,12 +633,15 @@ void database_frame(
             ++numWritten;
             if (devmode || dumppng) {
                 if (!(serial & 127)) {
-                    mkdir ("test_png", 0777);
+                    mkdir ("png_test", 0777);
                     char name[100];
-                    sprintf(name, "test_png/%06d_%d_%.2f_%.2f.png", serial, i, label[0], label[1]);
+                    sprintf(name, "png_test/%06d_%d_%.2f_%.2f.png", serial, i, label[0], label[1]);
                     stbi_write_png(name, outputwidth, outputheight, 1,
-                            (unsigned char const *)outputframe
-                            + outputwidth * outputheight, 0);
+                            (unsigned char const *)outputframe, 0);
+                    if (computelabels) {
+                        sprintf(name, "png_test/%06d_%d_%.1f_%.2f_cluster.png", serial, i, label[0], label[1]);
+                        write_false_color(name, outputwidth, outputheight, (unsigned char const *)cl_temp);
+                    }
                 }
             }
         }
@@ -443,9 +712,9 @@ void fake_database_frame(int frameno) {
     float label[2] = { steer, throttle };
     put_to_database(fakeframe, label);
     if (!(frameno & 127)) {
-        mkdir("test_png", 0777);
+        mkdir("png_test", 0777);
         char name[100];
-        sprintf(name, "test_png/%06d_%.3f_%.3f.png", frameno, steer, throttle);
+        sprintf(name, "png_test/%06d_%.3f_%.3f.png", frameno, steer, throttle);
         stbi_write_png(name, outputwidth, outputheight, 1, fakeframe, 0);
     }
 }
@@ -664,6 +933,7 @@ usage:
         fprintf(stderr, "--devmode\n");
         fprintf(stderr, "--dumppng\n");
         fprintf(stderr, "--fakedata\n");
+        fprintf(stderr, "--computelabels\n");
         fprintf(stderr, "--quiet\n");
         fprintf(stderr, "--verbose\n");
         exit(1);
@@ -786,6 +1056,12 @@ usage:
                 continue;
             }
 
+            if (!strcmp(argv[i], "--computelabels")) {
+                computelabels = true;
+                mkdir("png_test", 0777);
+                continue;
+            }
+
             fprintf(stderr, "unknown argument: '%s'\n", argv[i]);
             goto usage;
         } else {
@@ -793,9 +1069,13 @@ usage:
         }
     }
 
+    if (devmode && computelabels) {
+        fprintf(stderr, "--devmode and --computelabels are mutually exclusive\n");
+        goto usage;
+    }
     if (!filenameArgs.size()) {
         if (!fakedata) {
-            fprintf(stderr, "no input files specified -- did you need --fakedata?\n");
+            fprintf(stderr, "no input files specified -- do you need --fakedata?\n");
             goto usage;
         }
     } else if (fakedata) {

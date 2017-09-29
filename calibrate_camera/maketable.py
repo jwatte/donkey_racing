@@ -25,7 +25,7 @@ with open('table.h', 'wb') as hfile:
     hfile.write("#define SOURCE_WIDTH 640\n")
     hfile.write("#define SOURCE_HEIGHT 480\n")
     hfile.write("#define INPUT_LEFT %d\n" % (x,))
-    hfile.write("#define INPUT_TOP %d\n" % (y+int(h/2),))
+    hfile.write("#define INPUT_TOP %d\n" % (y+int(h/2)+yoffset,))
     hfile.write("#define INPUT_WIDTH %d\n" % (w,))
     hfile.write("#define INPUT_HEIGHT %d\n" % (int(h/2),))
     RECTIFIED_WIDTH = int(w/scaledown)
