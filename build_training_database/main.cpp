@@ -50,6 +50,8 @@ float minSteer = 0;
 float maxSteer = 0;
 float minThrottle = 0;
 float maxThrottle = 0;
+int numSkipped = 0;
+int numWritten = 0;
 
 int numfakeframes = 10000;
 uint64_t maxconcatoffset;
@@ -323,6 +325,10 @@ void database_frame(
     if (devmode) {
         magically_fix_labeling(serial, outputframe, label);
     }
+    bool record_this = true;
+    if (label[0] < -1.0f || label[0] > 1.0f || label[1] < 0.01f) {
+        record_this = false;
+    }
     if (label[0] < minSteer) {
         minSteer = label[0];
     }
@@ -349,23 +355,29 @@ void database_frame(
     if (label[1] > 10) {
         label[1] = 10;
     }
-    put_to_database(outputframe, label);
-    for (int i = 0; i != stretchData; ++i) {
-        m2_rotation(stretch_random() * 2 * stretchRotate - stretchRotate, mat);
-        mat[2] = stretch_random() * 2 * stretchOffset - stretchOffset;
-        mat[5] = stretch_random() * 2 * stretchOffset - stretchOffset;
-        unwarp_transformed_bytes(y, u, v, mat, outputframe);
+    if (record_this) {
         put_to_database(outputframe, label);
-        if (devmode || dumppng) {
-            if (!(serial & 127)) {
-                mkdir ("test_png", 0777);
-                char name[100];
-                sprintf(name, "test_png/%06d_%d_%.2f_%.2f.png", serial, i, label[0], label[1]);
-                stbi_write_png(name, outputwidth, outputheight, 1,
-                        (unsigned char const *)outputframe
-                        + outputwidth * outputheight, 0);
+        ++numWritten;
+        for (int i = 0; i != stretchData; ++i) {
+            m2_rotation(stretch_random() * 2 * stretchRotate - stretchRotate, mat);
+            mat[2] = stretch_random() * 2 * stretchOffset - stretchOffset;
+            mat[5] = stretch_random() * 2 * stretchOffset - stretchOffset;
+            unwarp_transformed_bytes(y, u, v, mat, outputframe);
+            put_to_database(outputframe, label);
+            ++numWritten;
+            if (devmode || dumppng) {
+                if (!(serial & 127)) {
+                    mkdir ("test_png", 0777);
+                    char name[100];
+                    sprintf(name, "test_png/%06d_%d_%.2f_%.2f.png", serial, i, label[0], label[1]);
+                    stbi_write_png(name, outputwidth, outputheight, 1,
+                            (unsigned char const *)outputframe
+                            + outputwidth * outputheight, 0);
+                }
             }
         }
+    } else {
+        numSkipped += 1;
     }
 }
 
@@ -925,6 +937,8 @@ int main(int argc, char const *argv[]) {
             if (progress || verbose) {
                 fprintf(stderr, "steer input range: %.2f - %.2f\n", minSteer, maxSteer);
                 fprintf(stderr, "throttle input range: %.2f - %.2f\n", minThrottle, maxThrottle);
+                fprintf(stderr, "skipped %d frames for bad labeling; recorded %d total frames\n",
+                        numSkipped, numWritten);
             }
         }
     }

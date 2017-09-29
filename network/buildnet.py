@@ -15,6 +15,9 @@ from caffe2.python.predictor_constants import predictor_constants as pc
 from caffe2.proto import caffe2_pb2
 
 use_lmdb = False
+training = True
+train_iters = 1000000
+
 
 # If you would like to see some really detailed initializations,
 # you can change --caffe2_log_level=0 to --caffe2_log_level=-1
@@ -38,28 +41,32 @@ def AddInput(model, batch_size, db, db_type):
     data = model.StopGradient(data, data)
     return data, label
 
-# This small, simple, model takes 25 milliseconds on RPi 3
 def AddNetModel(model, data):
-    # 149x59 -> 146x56
-    conv1 = brew.conv(model, data, 'conv1', dim_in=2, dim_out=8, kernel=4)
-    # 146x56 -> 73x28
+    # 180x60 -> 178x58
+    conv1 = brew.conv(model, data, 'conv1', dim_in=1, dim_out=8, kernel=3)
+    # 178x58 -> 89x29
     pool1 = brew.max_pool(model, conv1, 'pool1', kernel=2, stride=2)
     relu1 = brew.relu(model, pool1, 'relu1')
-    # 73x28 -> 70x25
+    # 89x29 -> 86x26
     conv2 = brew.conv(model, relu1, 'conv2', dim_in=8, dim_out=16, kernel=4)
-    # 70x25 -> 14x5
-    pool2 = brew.max_pool(model, conv2, 'pool2', kernel=5, stride=5)
+    # 86x26 -> 43x13
+    pool2 = brew.max_pool(model, conv2, 'pool2', kernel=2, stride=2)
     relu2 = brew.relu(model, pool2, 'relu2')
-    # 14x5 -> 11x2
-    conv3 = brew.conv(model, relu2, 'conv3', dim_in=16, dim_out=32, kernel=4)
-    # 11x2 -> 10x1
-    pool3 = brew.max_pool(model, conv3, 'pool3', kernel=2)
+    # 43x13 -> 40x10
+    conv3 = brew.conv(model, relu2, 'conv3', dim_in=16, dim_out=24, kernel=4)
+    # 40x10 -> 20x5
+    pool3 = brew.max_pool(model, conv3, 'pool3', kernel=2, stride=2)
     relu3 = brew.relu(model, pool3, 'relu3')
-    # 10x1x32 -> 128
-    fc4 = brew.fc(model, relu3, 'fc4', dim_in=10*1*32, dim_out=128)
-    relu4 = brew.relu(model, fc4, 'relu4')
+    # 20x5 -> 18x3
+    conv4 = brew.conv(model, relu3, 'conv4', dim_in=24, dim_out=48, kernel=3)
+    # 18x3 -> 17x2
+    pool4 = brew.max_pool(model, conv4, 'pool4', kernel=2)
+    relu4 = brew.relu(model, pool4, 'relu4')
+    # 17x2 -> 128
+    fc5 = brew.fc(model, relu4, 'fc5', dim_in=17*2*48, dim_out=128)
+    relu5 = brew.relu(model, fc5, 'relu5')
     # 128 -> 2
-    output = brew.fc(model, relu4, 'output', dim_in=128, dim_out=2)
+    output = brew.fc(model, relu5, 'output', dim_in=128, dim_out=2)
     return output
 
 def AddAccuracy(model, output, label):
@@ -74,14 +81,19 @@ def AddTrainingOperators(model, output, label):
     #AddAccuracy(model, output, label)
     model.AddGradientOperators([loss])
     ITER = brew.iter(model, "iter")
+    stepsize = int(train_iters / 30000)
+    if stepsize < 1:
+        stepsize = 1
+    if stepsize > 25:
+        stepsize = 25
     LR = model.LearningRate(
-        ITER, "LR", base_lr=-0.08, policy="step", stepsize=1, gamma=0.99997 )
+        ITER, "LR", base_lr=-0.06, policy="step", stepsize=1, gamma=0.99997 )
     ONE = model.param_init_net.ConstantFill([], "ONE", shape=[1], value=1.0)
     for param in model.params:
         param_grad = model.param_to_grad[param]
         model.WeightedSum([param, ONE, param_grad, LR], param)
     model.Checkpoint([ITER] + model.params, [],
-        db="checkpoint_%06d.lmdb", db_type="lmdb", every=1000)
+        db="checkpoint_%06d.lmdb", db_type="lmdb", every=10000)
 
 def AddBookkeepingOperators(model):
     #model.Print('accuracy', [], to_file=1)
@@ -211,14 +223,11 @@ load_checkpoint=None
 if len(sys.argv) > 1:
     load_checkpoint = sys.argv[1]
 
-training=True
-train_iters=100000
-
 if training:
     train.RunAllOnGPU()
     test.RunAllOnGPU()
     workspace.RunNetOnce(train.param_init_net)
-    workspace.FeedBlob('input', np.zeros((2,59,149)))
+    workspace.FeedBlob('input', np.zeros((1,60,180)))
     workspace.CreateNet(deploy.net, overwrite=True)
     workspace.CreateNet(train.net, overwrite=True)
     if load_checkpoint:
@@ -256,7 +265,7 @@ if training:
         print('exception while saving model:\n' + traceback.format_exc())
     print(loss)
 else:
-    a = np.zeros((1,2,149,59), np.float32)
+    a = np.zeros((1,1,180,60), np.float32)
     a[0][0][100][30] = 1.0
     a[0][0][50][30] = 1.0
     a[0][0][100][20] = 1.0
