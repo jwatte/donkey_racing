@@ -26,10 +26,11 @@ load_crunk(os.path.join(root_folder, "donkey_model_protos.crunk"), device_opts)
 workspace.CreateNet(test_model.net, overwrite=False)
 netname = test_model.net.Proto().name
 
-print('iter,label_steer,net_steer,label_throttle,net_throttle')
+print('iter,abs_label,abs_net,label_throttle,net_throttle,label_steer,net_steer')
 for i in range(0, 1000):
     workspace.RunNet(netname, 1)
     label = workspace.FetchBlob('label')
     output = workspace.FetchBlob('output')
-    print(i, label[0][0], output[0][0], label[0][1], output[0][1])
+    print("%d,%f,%f,%f,%f,%f,%f" % (i, abs(label[0][0]), abs(output[0][0]),
+        label[0][1], output[0][1], label[0][0], output[0][0]))
 

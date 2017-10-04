@@ -13,12 +13,12 @@ import caffe2.python.predictor.predictor_py_utils as pred_utils
 from caffe2.python.predictor_constants import predictor_constants as pc
 from caffe2.proto import caffe2_pb2
 
-BATCH_SIZE=16
-LEARN_RATE=-0.01
-train_iters = 20000
+BATCH_SIZE=32
+LEARN_RATE=-0.04
+train_iters = 200000
 
 #root_folder = "/home/jwatte/trainingdata/donkey_racing/network"
-root_folder = "/home/jwatte/trainingdata"
+root_folder = "/usr/local/src/trainingdata"
 #data_folder = "/home/jwatte/trainingdata/2017-09-07-8am-park"
 data_folder = os.path.join(root_folder, 'temp_oakland')
 
@@ -27,45 +27,35 @@ def AddInput(model, batch_size, db, db_type):
         [], ["data_uint8", "label"], batch_size=batch_size,
         db=db, db_type=db_type)
     data = model.Cast(data_uint8, "data_cast", to=core.DataType.FLOAT)
-    data = model.Scale(data, data, scale=float(1./255))
-    data = model.StopGradient(data, data)
-    return data, label
+    data2 = model.Scale(data, 'data2', scale=float(1./255))
+    data3 = model.StopGradient(data2, 'data3')
+    return data3, label
 
-def AddNetModel(model, data):
-    # 182x70 -> 180x68
-    conv1 = brew.conv(model, data, 'conv1', dim_in=1, dim_out=32, kernel=3)
-    # 180x68 -> 90x34
+# This is a LeNet-like model
+#
+def AddNetModel_2(model, data):
+    # 182x70x1 -> 90x34x3
+    conv1 = brew.conv(model, data, 'conv1', dim_in=1, dim_out=3, kernel=3)
     pool1 = brew.max_pool(model, conv1, 'pool1', kernel=2, stride=2)
-    relu1 = brew.relu(model, pool1, 'relu1')
-    # 90x34 -> 88x32
-    conv2 = brew.conv(model, relu1, 'conv2', dim_in=32, dim_out=48, kernel=3)
-    # 88x32 -> 44x16
+    # 90x34x3 -> 44x16x5
+    conv2 = brew.conv(model, pool1, 'conv2', dim_in=3, dim_out=5, kernel=3)
     pool2 = brew.max_pool(model, conv2, 'pool2', kernel=2, stride=2)
-    relu2 = brew.relu(model, pool2, 'relu2')
-    # 44x16 -> 40x12
-    conv3 = brew.conv(model, relu2, 'conv3', dim_in=48, dim_out=64, kernel=5)
-    # 40x12 -> 20x6
+    # 44x16x5 -> 21x7x7
+    conv3 = brew.conv(model, pool2, 'conv3', dim_in=5, dim_out=7, kernel=3)
     pool3 = brew.max_pool(model, conv3, 'pool3', kernel=2, stride=2)
-    relu3 = brew.relu(model, pool3, 'relu3')
-    # 20x6 -> 18x4
-    conv4 = brew.conv(model, relu3, 'conv4', dim_in=64, dim_out=80, kernel=3)
-    # 18x4 -> 9x2
-    pool4 = brew.max_pool(model, conv4, 'pool4', kernel=2, stride=2)
-    relu4 = brew.relu(model, pool4, 'relu4')
-    # 256 FC
-    fc5 = brew.fc(model, relu4, 'fc5', dim_in=9*2*80, dim_out=256)
+    relu4 = brew.relu(model, pool3, 'relu4')
+    # 21x7x7 -> 2
+    fc5 = brew.fc(model, relu4, 'fc5', dim_in=21*7*7, dim_out=16)
     relu5 = brew.relu(model, fc5, 'relu5')
-    fc6 = brew.fc(model, relu5, 'fc6', dim_in=256, dim_out=64)
-    relu6 = brew.relu(model, fc6, 'relu6')
-    output = brew.fc(model, relu6, 'output', dim_in=64, dim_out=2)
+    output = brew.fc(model, relu5, 'output', dim_in=16, dim_out=2)
     return output
 
+def AddNetModel(model, data):
+    return AddNetModel_2(model, data)
+
 def AddTrainingOperators(model, output, label):
-    #xent = model.LabelCrossEntropy([output, label], 'xent')
-    xdiff = model.Sub([output, label], "xdiff")
-    diffsq = model.DotProduct([xdiff, xdiff], "diffsq")
-    #loss = model.Abs([xdiff], "loss")
-    loss = model.AveragedLoss(diffsq, "loss")
+    dot = model.L1Distance([output, label], "dot")
+    loss = model.Scale(dot, 'loss', scale=1./BATCH_SIZE)
     model.AddGradientOperators([loss])
     ITER = brew.iter(model, "iter")
     stepsize = int(train_iters / 30000)

@@ -6,6 +6,9 @@
 #include <unistd.h>
 #include <time.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/fcntl.h>
 #include <math.h>
 
 #include <list>
@@ -43,6 +46,7 @@ bool progress = isatty(2);
 bool devmode = false;
 bool dumppng = true;
 bool fakedata = false;
+bool output_as_streams = false;
 bool computelabels = false;
 float scaleSteer = 1.0f;
 float scaleThrottle = 1.0f;
@@ -134,6 +138,18 @@ void mkfalse(unsigned char *d, unsigned char ix) {
         d[0] = d[1] = d[2] = 0;
         return;
     }
+    if (ix == 255) {
+        d[0] = d[1] = d[2] = 255;
+        return;
+    }
+    if (ix == 254) {
+        d[0] = 255; d[1] = 0; d[2] = 255;
+        return;
+    }
+    if (ix == 253) {
+        d[0] = 255; d[1] = 255; d[2] = 0;
+        return;
+    }
     float s1 = sinf(ix);
     float s2 = sinf(ix + 2.1f);
     float s3 = sinf(ix - 2.1f);
@@ -195,8 +211,8 @@ char const *get_filename(FILE *f) {
 
 
 int stretchData = 7;
-float stretchRotate = 0.03f;
-float stretchOffset = 3.0f;
+float stretchRotate = 0.04f;
+float stretchOffset = 5.0f;
 float testFraction = 0.1f;
 unsigned char *outputframe;
 int outputwidth;
@@ -210,18 +226,121 @@ static caffe2::TensorProtos protos;
 static caffe2::TensorProto *dataProto;
 static caffe2::TensorProto *labelProto;
 static int databaseKeyIndex;
-static int testNumFrames;
-static int trainNumFrames;
 std::unique_ptr<caffe2::db::DB> train_db;
 std::unique_ptr<caffe2::db::DB> test_db;
 std::unique_ptr<caffe2::db::Transaction> trainTransaction;
 std::unique_ptr<caffe2::db::Transaction> testTransaction;
+
+int testfds[2] = { -1, -1 };
+int trainfds[2] = { -1, -1 };
+pid_t testpid = -1;
+pid_t trainpid = -1;
+
+char *wrdata;
+
+void test_write_loop() {
+    float label[2];
+    char c;
+    if (!wrdata) {
+        wrdata = (char *)malloc(outputsize);
+    }
+    int testNumFrames = 0;
+    while (true) {
+        if (read(testfds[0], &c, 1) != 1) {
+            abort();
+        }
+        if (c == 'q') {
+            break;
+        }
+        if (read(testfds[0], &databaseKeyIndex, sizeof(databaseKeyIndex))
+                != sizeof(databaseKeyIndex)) {
+            abort();
+        }
+        if (read(testfds[0], label, 8) != 8) {
+            abort();
+        }
+        if (read(testfds[0], wrdata, outputsize) != outputsize) {
+            abort();
+        }
+        dataProto->set_byte_data(wrdata, outputsize);
+        labelProto->set_float_data(0, label[0]);
+        labelProto->set_float_data(1, label[1]);
+
+        char dki[12];
+        sprintf(dki, "%08d", databaseKeyIndex);
+        std::string keyname(dki);
+
+        std::string value;
+        protos.SerializeToString(&value);
+
+        testTransaction->Put(keyname, value);
+        ++testNumFrames;
+        if (!(testNumFrames & 127)) {
+            if (verbose) {
+                fprintf(stderr, "partial commit of test database at %d items\n", testNumFrames);
+            }
+            testTransaction->Commit();
+            testTransaction.reset();
+            testTransaction = test_db->NewTransaction();
+        }
+    }
+    close(testfds[0]);
+}
+
+void train_write_loop() {
+    float label[2];
+    char c;
+    if (!wrdata) {
+        wrdata = (char *)malloc(outputsize);
+    }
+    int trainNumFrames = 0;
+    while (true) {
+        if (read(trainfds[0], &c, 1) != 1) {
+            abort();
+        }
+        if (c == 'q') {
+            break;
+        }
+        if (read(trainfds[0], &databaseKeyIndex, sizeof(databaseKeyIndex))
+                != sizeof(databaseKeyIndex)) {
+            abort();
+        }
+        if (read(trainfds[0], label, 8) != 8) {
+            abort();
+        }
+        if (read(trainfds[0], wrdata, outputsize) != outputsize) {
+            abort();
+        }
+        dataProto->set_byte_data(wrdata, outputsize);
+        labelProto->set_float_data(0, label[0]);
+        labelProto->set_float_data(1, label[1]);
+
+        char dki[12];
+        sprintf(dki, "%08d", databaseKeyIndex);
+        std::string keyname(dki);
+
+        std::string value;
+        protos.SerializeToString(&value);
+
+        trainTransaction->Put(keyname, value);
+        if (!(trainNumFrames & 127)) {
+            if (verbose) {
+                fprintf(stderr, "partial commit of train database at %d items\n", trainNumFrames);
+            }
+            trainTransaction->Commit();
+            trainTransaction.reset();
+            trainTransaction = train_db->NewTransaction();
+        }
+    }
+    close(testfds[0]);
+}
 
 void begin_database_write(char const *output) {
 
     get_unwarp_info(&outputsize, &outputwidth, &outputheight, &outputplanes);
     outputsize = outputwidth * outputheight * outputplanes;
     outputframe = (unsigned char *)malloc(outputsize);
+    memset(outputframe, 0xff, outputsize);
 
     protos = caffe2::TensorProtos();
     dataProto = protos.add_protos();
@@ -240,76 +359,130 @@ void begin_database_write(char const *output) {
         fprintf(stderr, "%s: could not create directory\n", output);
         exit(1);
     }
+    if (output_as_streams) {
+        std::string path(output);
+        path += "/test.stream";
+        testfds[1] = open(path.c_str(), O_RDWR|O_CREAT|O_EXCL, 0666);
+        if (testfds[1] < 0) {
+            perror(path.c_str());
+            exit(1);
+        }
+        path = output;
+        path += "/train.stream";
+        trainfds[1] = open(path.c_str(), O_RDWR|O_CREAT|O_EXCL, 0666);
+        if (trainfds[1] < 0) {
+            perror(path.c_str());
+            exit(1);
+        }
+        return;
+    }
     std::string path(output);
     path += "/train";
     if (exists(path.c_str())) {
         fprintf(stderr, "%s: already exists, not overwriting\n", path.c_str());
         exit(1);
     }
-    if (verbose) {
-        fprintf(stderr, "Creating training database as '%s'\n", path.c_str());
+    std::string path2 = output;
+    path2 += "/test";
+    if (exists(path2.c_str())) {
+        fprintf(stderr, "%s: already exists, not overwriting\n", path2.c_str());
+        exit(1);
     }
-    train_db = caffe2::db::CreateDB("lmdb", path, caffe2::db::NEW);
-    trainTransaction = train_db->NewTransaction();
-
-    path = output;
-    path += "/test";
-    if (exists(path.c_str())) {
-        fprintf(stderr, "%s: already exists, not overwriting\n", path.c_str());
+    if ((pipe(testfds) < 0) || (pipe(trainfds) < 0)) {
+        fprintf(stderr, "pipe() failed; cannot write training database\n");
         exit(1);
     }
     if (verbose) {
-        fprintf(stderr, "Creating test database as '%s'\n", path.c_str());
+        fprintf(stderr, "Creating training database as '%s'\n", path.c_str());
     }
-    test_db = caffe2::db::CreateDB("lmdb", path, caffe2::db::NEW);
-    testTransaction = test_db->NewTransaction();
+    trainpid = fork();
+    if (trainpid == -1) {
+        fprintf(stderr, "fork() failed; cannot write training database\n");
+        exit(1);
+    }
+    if (!trainpid) {
+        train_db = caffe2::db::CreateDB("lmdb", path, caffe2::db::NEW);
+        if (!train_db) {
+            fprintf(stderr, "create LMDB %s failed\n", path.c_str());
+            exit(1);
+        }
+        trainTransaction = train_db->NewTransaction();
+        train_write_loop();
+        exit(0);
+    }
+
+    if (verbose) {
+        fprintf(stderr, "Creating test database as '%s'\n", path2.c_str());
+    }
+    testpid = fork();
+    if (testpid == -1) {
+        fprintf(stderr, "fork() failed; cannot write testing database\n");
+        exit(1);
+    }
+    if (!testpid) {
+        test_db = caffe2::db::CreateDB("lmdb", path2, caffe2::db::NEW);
+        if (!test_db) {
+            fprintf(stderr, "create LMDB %s failed\n", path2.c_str());
+            exit(1);
+        }
+        testTransaction = test_db->NewTransaction();
+        test_write_loop();
+        exit(0);
+    }
 }
+
+int q;
 
 void end_database_write() {
     if (verbose) {
         fprintf(stderr, "closing databases\n");
     }
-    trainTransaction->Commit();
-    trainTransaction.reset();
-    testTransaction->Commit();
-    testTransaction.reset();
-    train_db.reset();
-    test_db.reset();
+    q += write(testfds[1], "q", 1);
+    q += close(testfds[1]);
+    q += write(trainfds[1], "q", 1);
+    q += close(trainfds[1]);
+    int st;
+    waitpid(testpid, &st, 0);
+    waitpid(trainpid, &st, 0);
 }
 
-void put_to_database(unsigned char const *frame, float const *label) {
-    dataProto->set_byte_data(frame, outputsize);
-    labelProto->set_float_data(0, label[0]);
-    labelProto->set_float_data(1, label[1]);
-
-    char dki[12];
-    sprintf(dki, "%08d", databaseKeyIndex);
+void put_to_database2(unsigned char const *frame, float const *label) {
     ++databaseKeyIndex;
-    std::string keyname(dki);
-
-    std::string value;
-    protos.SerializeToString(&value);
-
     if (stretch_random() < testFraction) {
-        testTransaction->Put(keyname, value);
-        ++testNumFrames;
-        if (!(testNumFrames & 511)) {
-            if (verbose) {
-                fprintf(stderr, "partial commit of test database at %d items\n", testNumFrames);
-            }
-            testTransaction->Commit();
-        }
+        q += write(testfds[1], "w", 1);
+        q += write(testfds[1], &databaseKeyIndex, sizeof(databaseKeyIndex));
+        q += write(testfds[1], label, 8);
+        q += write(testfds[1], frame, outputsize);
     } else {
-        trainTransaction->Put(keyname, value);
-        ++trainNumFrames;
-        if (!(trainNumFrames & 511)) {
-            if (verbose) {
-                fprintf(stderr, "partial commit of training database at %d items\n", trainNumFrames);
-            }
-            trainTransaction->Commit();
-        }
+        q += write(trainfds[1], "w", 1);
+        q += write(trainfds[1], &databaseKeyIndex, sizeof(databaseKeyIndex));
+        q += write(trainfds[1], label, 8);
+        q += write(trainfds[1], frame, outputsize);
     }
 }
+
+unsigned char *flipbuf = 0;
+
+void put_to_database(unsigned char const *frame, float *label) {
+    put_to_database2(frame, label);
+    /* stretch data some more by flipping horizontally */
+    if (!flipbuf) {
+        flipbuf = (unsigned char *)malloc(outputsize);
+    }
+    float label2[2];
+    label2[0] = -label[0];
+    label2[1] = label[1];
+    int n = outputwidth;
+    for (int i = 0; i != outputheight; ++i) {
+        unsigned char const *src = frame + n * i;
+        unsigned char *dst = flipbuf + n * (i+1);
+        for (int j = 0; j != n; ++j) {
+            *--dst = *src++;
+        }
+    }
+    put_to_database2(flipbuf, label2);
+}
+
 
 #define FIX_ROWS 20
 #define FIX_COLUMNS 40
@@ -362,6 +535,31 @@ void histogram(char const *name, int width, int height, unsigned char const *dat
     fprintf(stderr, "\n");
 }
 
+void render_vote(unsigned char *fb, int width, int height,
+        double cx, double cy, double dir, double power, unsigned char color)
+{
+    cx += width/2;
+    cy += height/2;
+    float s = sin(dir);
+    float c = cos(dir);
+    int n = power * 20;
+    if (n < 5) {
+        n = 5;
+    } else if (n > 40) {
+        n = 40;
+    }
+    while (n-- > 0) {
+        int x = (int)floor(cx);
+        int y = (int)floor(cy);
+        cx = cx + s;
+        cy = cy - c;
+        if (x < 0 || x >= width || y < 0 || y >= height) {
+            continue;
+        }
+        fb[x + y * width] = color;
+    }
+}
+
 unsigned char *cl_temp;
 
 void compute_labels_cv(
@@ -376,6 +574,7 @@ void compute_labels_cv(
     double avg = 0;
     double avg2 = 0;
     int count = opw * oph;
+    assert(opw * oph == outputsize);
     for (unsigned char const *ptr = frame, *end = frame + count;
             ptr != end; ++ptr) {
         avg += *ptr;
@@ -475,18 +674,33 @@ void compute_labels_cv(
     double ys[256] = { 0.0 };
     double xs2[256] = { 0.0 };
     double xys[256] = { 0.0 };
+    double xmin[256] = { 0.0 };
+    double xmax[256] = { 0.0 };
+    double ymin[256] = { 0.0 };
+    double ymax[256] = { 0.0 };
+    double xsize[256] = { 0.0 };
+    double ysize[256] = { 0.0 };
     for (int r = 0; r != oph; ++r) {
         unsigned char *p = cl_temp + r * opw;
         for (int c = 0; c != opw; ++c) {
             unsigned char ix = *p;
             if (ix) {
-                counts[ix] += 1;
                 double x = (c - opw/2);
                 double y = (r - oph/2);
+                if (counts[ix] == 0) {
+                    xmin[ix] = xmax[ix] = x;
+                    ymin[ix] = ymax[ix] = y;
+                } else {
+                    xmin[ix] = std::min(xmin[ix], x);
+                    xmax[ix] = std::max(xmax[ix], x);
+                    ymin[ix] = std::min(ymin[ix], y);
+                    ymax[ix] = std::max(ymax[ix], y);
+                }
                 xs[ix] += x;
                 ys[ix] += y;
                 xs2[ix] += x * x;
                 xys[ix] += x * y;
+                counts[ix] += 1;
             }
             ++p;
         }
@@ -494,6 +708,7 @@ void compute_labels_cv(
 
     //  what constitutes a "big enough" cluster?
     int const cnt_thresh = 12;
+    //  vote for whether to turn left/right
     double xavg[256] = { 0.0 };
     double yavg[256] = { 0.0 };
     //double lr_a[256] = { 0.0 };
@@ -503,6 +718,8 @@ void compute_labels_cv(
     for (int i = 0; i != 256; ++i) {
         xavg[i] = (counts[i] >= cnt_thresh) ? xs[i] / counts[i] : 0.0;
         yavg[i] = (counts[i] >= cnt_thresh) ? ys[i] / counts[i] : 0.0;
+        xsize[i] = xmax[i] - xmin[i] + 1;
+        ysize[i] = ymax[i] - ymin[i] + 1;
         counts[i] = (counts[i] >= cnt_thresh) ? counts[i] : 0;
         if (counts[i]) {
             // lr_a[i] = (ys[i] * xs2[i] - xs[i] * xys[i]) /
@@ -519,11 +736,16 @@ void compute_labels_cv(
                         direction, i, counts[i]);
             }
             //  TODO: magic constant
-            double power = counts[i] / (yavg[i] + oph/2 + 10);
+            double power = counts[i] / (yavg[i] + oph/2 + 50.0);
+            double vote = 0.0;
+            double straight = atan2(-xavg[i], yavg[i]+65);  //  where is the horizon?
+            render_vote(cl_temp, outputwidth, outputheight, 
+                    xavg[i], yavg[i], straight, 2, 254);
             if (fabs(direction) < 1e-2) {
                 //  horizontal line? Turn right.
                 votes += 0.25 * power;
                 votecount += power;
+                vote = M_PI / 2;
             } else {
                 if (fabs(direction) > 1e2) {
                     //  Too vertical to be numerically reliable, but we 
@@ -531,18 +753,28 @@ void compute_labels_cv(
                     //  and vice versa.
                     votes += xavg[i] / (opw/2) * power;
                     votecount += power;
+                    vote = 0;
                 } else {
+                    //  horizontal, square-ish? Reduce power
                     //  TODO: magic constant
-                    double straight = -xavg[i] / (opw/2 + (oph/2 + yavg[i]) * 5);
-                    direction = atan(1.0 / direction) - straight;
-                    votes += direction * power;
+                    if (fabsf(direction) < 0.5 && fabsf(ysize[i]/xsize[i]-1.0) < 0.2) {
+                        power *= 0.1;
+                    }
+                    direction = -atan(1.0 / direction);
+                    render_vote(cl_temp, outputwidth, outputheight, 
+                            xavg[i], yavg[i], direction, power, 253);
+                    votes += (direction - straight) * power;
                     votecount += power;
+                    vote = direction - straight;
                 }
             }
             if (std::isnan(votes) || std::isnan(votecount)) {
                 fprintf(stderr,
                         "NaN in votes %.1f / votecount %.1f at iteration %d in serial %d\n",
                         votes, votecount, i, serial);
+            } else {
+                render_vote(cl_temp, outputwidth, outputheight, 
+                        xavg[i], yavg[i], vote, power, 255);
             }
         }
     }
@@ -618,9 +850,6 @@ void database_frame(
     if (label[1] < 0.1) {
         label[1] = 0.1;
     }
-    if (label[1] > 10) {
-        label[1] = 10;
-    }
     if (record_this) {
         put_to_database(outputframe, label);
         ++numWritten;
@@ -638,8 +867,8 @@ void database_frame(
                     sprintf(name, "png_test/%06d_%d_%.2f_%.2f.png", serial, i, label[0], label[1]);
                     stbi_write_png(name, outputwidth, outputheight, 1,
                             (unsigned char const *)outputframe, 0);
-                    if (computelabels) {
-                        sprintf(name, "png_test/%06d_%d_%.1f_%.2f_cluster.png", serial, i, label[0], label[1]);
+                    if (computelabels && i == 0) {
+                        sprintf(name, "png_test/%06d_%d_%.2f_%.2f_cluster.png", serial, i, label[0], label[1]);
                         write_false_color(name, outputwidth, outputheight, (unsigned char const *)cl_temp);
                     }
                 }
@@ -776,13 +1005,14 @@ bool generate_dataset(char const *output) {
     std::vector<unsigned char> tsbuf;
     uint64_t timeStart = 0;
     int nprogress = 1;
+    readBuf.resize(100);
     while (curpdts != endpdts && curtime != endtime && curh264 != endh264) {
         while (curtime != endtime &&
                 curtime->concatoffset < curpdts->concatoffset) {
             if (curtime->size >= 6) {
                 fseek(curtime->file, curtime->fileoffset, 0);
                 tsbuf.resize(curtime->size);
-                fread(&tsbuf[0], 1, curtime->size, curtime->file);
+                q += fread(&tsbuf[0], 1, curtime->size, curtime->file);
                 steer_packet sp = { 0 };
                 uint64_t timeNow;
                 memcpy(&timeNow, &tsbuf[0], 8);
@@ -819,7 +1049,7 @@ bool generate_dataset(char const *output) {
         while (curpdts != endpdts &&
                 curpdts->concatoffset < curh264->concatoffset) {
             fseek(curpdts->file, curpdts->fileoffset, 0);
-            fread(&pd, 1, 16, curpdts->file);
+            q += fread(&pd, 1, 16, curpdts->file);
             ++curpdts;
             if (frameno == 0) {
                 ptsbase = pd.pts;
@@ -830,9 +1060,10 @@ bool generate_dataset(char const *output) {
                 curh264->concatoffset < curtime->concatoffset &&
                 curh264->concatoffset < curpdts->concatoffset) {
             fseek(curh264->file, curh264->fileoffset, 0);
-            size_t readBufOffset = readBuf.size();
-            readBuf.resize(readBufOffset + curh264->size);
-            fread(&readBuf[readBufOffset], 1, curh264->size, curh264->file);
+            size_t readBufOffset = readBuf.size()-100;
+            size_t actualSize = readBufOffset + curh264->size;
+            readBuf.resize(actualSize + 100);
+            q += fread(&readBuf[readBufOffset], 1, curh264->size, curh264->file);
             avp.pos = curh264->streamoffset;
 parse_more:
             avp.data = NULL;
@@ -840,7 +1071,7 @@ parse_more:
             avp.pts = pd.pts - ptsbase;
             avp.dts = pd.dts ? pd.dts - dtsbase : pd.pts - ptsbase;
             int lenParsed = av_parser_parse2(parser, ctx, &avp.data, &avp.size,
-                    &readBuf[0], readBuf.size(), avp.pts, avp.dts, avp.pos);
+                    &readBuf[0], actualSize, avp.pts, avp.dts, avp.pos);
             if (verbose) {
                 fprintf(stderr, "av_parser_parse2(): lenParsed %d size %d pointer %p readbuf 0x%p\n",
                         lenParsed, avp.size, avp.data, &readBuf[0]);
@@ -936,6 +1167,7 @@ usage:
         fprintf(stderr, "--computelabels\n");
         fprintf(stderr, "--quiet\n");
         fprintf(stderr, "--verbose\n");
+        fprintf(stderr, "--output-as-streams\n");
         exit(1);
     }
 
@@ -1059,6 +1291,11 @@ usage:
             if (!strcmp(argv[i], "--computelabels")) {
                 computelabels = true;
                 mkdir("png_test", 0777);
+                continue;
+            }
+
+            if (!strcmp(argv[i], "--output-as-streams")) {
+                output_as_streams = true;
                 continue;
             }
 
@@ -1187,6 +1424,15 @@ void slurp_files() {
 }
 
 
+namespace caffe2 {
+    namespace db {
+        class LMDBCursor : public Cursor {
+            public:
+                bool SupportsSeek();
+        };
+    }
+}
+
 int main(int argc, char const *argv[]) {
 
     struct timeval starttime = { 0 };
@@ -1234,5 +1480,5 @@ int main(int argc, char const *argv[]) {
                 int(seconds)/3600, int(seconds)/60%60, fmod(seconds, 60));
     }
 
-    return errors;
+    return errors;/* || !&caffe2::db::LMDBCursor::SupportsSeek;*/
 }

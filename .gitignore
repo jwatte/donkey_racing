@@ -27,3 +27,4 @@ network/proto
 network/some-lmdb
 build_training_database/mktrain
 build_training_database/build_training_database
+build_training_database/mkdbfromstream

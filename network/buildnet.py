@@ -8,6 +8,7 @@ import shutil
 import traceback
 import math
 from netdef import *
+import scipy.misc
 
 from caffe2.python import core, model_helper, net_drawer, workspace, visualize, brew
 import caffe2.python.predictor.predictor_exporter as pe
@@ -81,7 +82,7 @@ if training:
     with open('training.log', 'w') as logfile:
         train.RunAllOnGPU()
         workspace.RunNetOnce(train.param_init_net)
-        #workspace.FeedBlob('input', np.zeros((1,60,180)))
+        #workspace.FeedBlob('input', np.zeros((1,70,182)))
         #workspace.CreateNet(deploy.net, overwrite=True)
         workspace.CreateNet(train.net, overwrite=True)
         if load_checkpoint:
@@ -99,7 +100,7 @@ if training:
             workspace.RunNet(name)
             if i == 0:
                 realstart = time.time()
-            loss[i] = workspace.FetchBlob('loss')
+            loss[i] = workspace.FetchBlob('loss')[0]
             if i % 200 == 0:
                 LR = workspace.FetchBlob('LR')
                 stop = time.time()
@@ -111,12 +112,24 @@ if training:
                 label = lb[0][0]
                 sys.stderr.write("iter %d loss %.6f lr %.6f speed %.2f remain %.2f   steer %.2f label %.2f   \r" %
                         (i, loss[i], LR, 200.0/(stop-start), (stop-realstart)/j*(train_iters-i), steer, label))
-                logfile.write("iter %d loss %.6f lr %.6f speed %.2f remain %.2f   steer %.2f label %.2f   \r" %
+                logfile.write("iter %d loss %.6f lr %.6f speed %.2f remain %.2f   steer %.2f label %.2f   \n" %
                         (i, loss[i], LR, 200.0/(stop-start), (stop-realstart)/j*(train_iters-i), steer, label))
                 if math.isnan(loss[i]) or math.isnan(steer):
                         logfile.write('\nNaN detected -- model diverges. Emergency brake.\n')
                         print('\nNaN detected -- model diverges. Emergency brake.')
                         sys.exit(4)
+                if False and (i % 5000 == 0):
+                    for j in deploy.params:
+                        ba = workspace.FetchBlob(j)
+                        if len(ba.shape) == 4:
+                            for q in range(0, ba.shape[0]):
+                                for w in range(0, ba.shape[1]):
+                                    scipy.misc.imsave('param_%d_%s_%d_%d.jpg' % (i, j, q, w), ba[q][w])
+                        if len(ba.shape) == 3:
+                            for q in range(0, ba.shape[0]):
+                                scipy.misc.imsave('param_%d_%s_%d.jpg' % (i, j, q), ba[q])
+                        if len(ba.shape) == 2:
+                            scipy.misc.imsave('param_%d_%s.jpg' % (i, j), ba)
                 start = stop
         logfile.write('\nFInished at %d iterations.\n' % (train_iters,))
         print('\nFInished at %d iterations.' % (train_iters,))
@@ -126,7 +139,7 @@ if training:
         print('exception while saving model:\n' + traceback.format_exc())
     print(loss)
 else:
-    a = np.zeros((1,1,180,60), np.float32)
+    a = np.zeros((1,1,182,70), np.float32)
     a[0][0][100][30] = 1.0
     a[0][0][50][30] = 1.0
     a[0][0][100][20] = 1.0
