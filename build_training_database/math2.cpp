@@ -47,9 +47,9 @@ float *m2_mul(float const *left, float const *right, float *dst) {
     dst[0] = left[0] * right[0] + left[1] * right[3] + left[2];
     dst[1] = left[0] * right[1] + left[1] * right[4] + left[2];
     dst[2] = left[0] * right[2] + left[1] * right[5] + left[2];
-    dst[0] = left[3] * right[0] + left[4] * right[3] + left[5];
-    dst[1] = left[3] * right[1] + left[4] * right[4] + left[5];
-    dst[2] = left[3] * right[2] + left[4] * right[5] + left[5];
+    dst[3] = left[3] * right[0] + left[4] * right[3] + left[5];
+    dst[4] = left[3] * right[1] + left[4] * right[4] + left[5];
+    dst[5] = left[3] * right[2] + left[4] * right[5] + left[5];
     return dst;
 }
 

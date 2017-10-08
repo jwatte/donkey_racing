@@ -18,6 +18,27 @@ from caffe2.proto import caffe2_pb2
 
 training = True
 
+load_checkpoint=None
+load_trained=None
+load_trained="load_trained_5.crunk"
+
+if len(sys.argv) > 1:
+    try:
+        load_checkpoint = sys.argv[1]
+        if load_checkpoint.find(".crunk") > 0:
+            load_trained = load_checkpoint
+            load_checkpoint = None
+        if len(sys.argv > 2):
+            netdef.iter_val = int(sys.argv[2])
+        if len(sys.argv > 3):
+            netdef.LEARN_RATE = float(sys.argv[3])
+        if netdef.LEARN_RATE >= 0:
+            print("LEARN_RATE must be < 0")
+            sys.exit(1)
+    except:
+        print("Usage: buildnet.py [checkpoint iter lr]")
+        sys.exit(1)
+
 # If you would like to see some really detailed initializations,
 # you can change --caffe2_log_level=0 to --caffe2_log_level=-1
 core.GlobalInit(['caffe2', '--caffe2_log_level=0'])
@@ -73,51 +94,84 @@ device_opts.cuda_gpu_id = 0
 save_protobufs(train, test, deploy)
 
 
-load_checkpoint=None
+def is_param_name(p):
+    return p[:4] == "conv" or p[:2] == "fc" or p[:4] == "relu" or p[:4] == "pool" or p[:7] == "squeeze"
 
-if len(sys.argv) > 1:
-    load_checkpoint = sys.argv[1]
+def add_noise():
+    for p in deploy.params:
+        p = str(p)
+        if is_param_name(p):
+            b = workspace.FetchBlob(p)
+            rand = np.random.rand(*b.shape).astype(np.float32)
+            rand = np.add(rand, -0.5)
+            b = np.multiply(b, 0.5)
+            b = np.add(b, rand)
+            workspace.FeedBlob(p, b, device_opts)
+
+def init_random():
+    for p in deploy.params:
+        p = str(p)
+        if is_param_name(p):
+            rand = np.random.rand(*b.shape).astype(np.float32)
+            rand = np.add(rand, -0.5)
+            workspace.FeedBlob(p, rand, device_opts)
 
 if training:
     with open('training.log', 'w') as logfile:
         train.RunAllOnGPU()
         workspace.RunNetOnce(train.param_init_net)
-        #workspace.FeedBlob('input', np.zeros((1,70,182)))
-        #workspace.CreateNet(deploy.net, overwrite=True)
-        workspace.CreateNet(train.net, overwrite=True)
+        workspace.CreateNet(train.net, overwrite=False)
+        add_noise()
         if load_checkpoint:
             load = model_helper.ModelHelper(name="load_checkpoint")
             load.Load([], [], db=load_checkpoint, db_type="lmdb", load_all=1, keep_device=1, absolute_path=0)
             workspace.RunNetOnce(load.net)
+            workspace.FeedBlob('iter', [iter_val])
             save_trained_model(deploy)
-            # to re-train with initial data, uncomment here
-            #workspace.FeedBlob('LR', np.array([0.01]))
-            #workspace.FeedBlock('iter', np.array([0]))
+        if load_trained:
+            load_crunk(load_trained, device_opts)
         loss = np.zeros(train_iters)
         start = time.time()
         name = train.net.Proto().name
-        for i in range(train_iters):
+        numstraight = 0
+        i = 0
+        while i < train_iters:
             workspace.RunNet(name)
             if i == 0:
                 realstart = time.time()
-            loss[i] = workspace.FetchBlob('loss')[0]
+            loss[i] = workspace.FetchBlob('avgloss')
             if i % 200 == 0:
                 LR = workspace.FetchBlob('LR')
                 stop = time.time()
                 j = i
                 if j == 0: j = 1
                 st = workspace.FetchBlob('output')
-                steer = st[0][0]
+                steer = st[0,0]
                 lb = workspace.FetchBlob('label')
-                label = lb[0][0]
-                sys.stderr.write("iter %d loss %.6f lr %.6f speed %.2f remain %.2f   steer %.2f label %.2f   \r" %
-                        (i, loss[i], LR, 200.0/(stop-start), (stop-realstart)/j*(train_iters-i), steer, label))
+                label = lb[0,0]
+                outputs = []
+                for q in st:
+                    outputs.append(q[0])
+                avg = sum(outputs)/len(outputs)
+                nstraight = sum((abs(x-avg) < 0.02) for x in outputs)
+                if nstraight == len(outputs):
+                    numstraight += 1
+                    print("\nepoch " + str(i) + " steering averages at: " + str(avg))
+                else:
+                    numstraight = 0
+                if numstraight > 9:
+                    logfile.write("\nten epochs with straight-ahead steering in a row -- adding noise!\n")
+                    print("\nten epochs with straight-ahead steering in a row -- adding noise!")
+                    add_noise()
+                    numstraight = 0
+                sys.stderr.write("iter %7d loss %8.6f lr %8.6f speed %6.2f remain %7.2f   steer %5.2f label %5.2f  nstraight %3d        \r" %
+                        (i, loss[i], LR, 200.0/(stop-start), (stop-realstart)/j*(train_iters-i), steer, label, nstraight))
                 logfile.write("iter %d loss %.6f lr %.6f speed %.2f remain %.2f   steer %.2f label %.2f   \n" %
                         (i, loss[i], LR, 200.0/(stop-start), (stop-realstart)/j*(train_iters-i), steer, label))
                 if math.isnan(loss[i]) or math.isnan(steer):
                         logfile.write('\nNaN detected -- model diverges. Emergency brake.\n')
                         print('\nNaN detected -- model diverges. Emergency brake.')
-                        sys.exit(4)
+                        init_random()
                 if False and (i % 5000 == 0):
                     for j in deploy.params:
                         ba = workspace.FetchBlob(j)
@@ -131,7 +185,8 @@ if training:
                         if len(ba.shape) == 2:
                             scipy.misc.imsave('param_%d_%s.jpg' % (i, j), ba)
                 start = stop
-        logfile.write('\nFInished at %d iterations.\n' % (train_iters,))
+            i = i + 1
+        logfile.write('\nFinished at %d iterations.\n' % (train_iters,))
         print('\nFInished at %d iterations.' % (train_iters,))
     try:
         save_trained_model(deploy)

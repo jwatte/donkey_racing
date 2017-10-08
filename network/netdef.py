@@ -14,8 +14,9 @@ from caffe2.python.predictor_constants import predictor_constants as pc
 from caffe2.proto import caffe2_pb2
 
 BATCH_SIZE=32
-LEARN_RATE=-0.04
-train_iters = 200000
+LEARN_RATE=-0.01
+train_iters=1000000
+iter_val=0
 
 #root_folder = "/home/jwatte/trainingdata/donkey_racing/network"
 root_folder = "/usr/local/src/trainingdata"
@@ -50,22 +51,54 @@ def AddNetModel_2(model, data):
     output = brew.fc(model, relu5, 'output', dim_in=16, dim_out=2)
     return output
 
+def AddNetModel_5(model, data):
+    # 0 params, dims [1, 70, 182]
+    input1 = data
+    # 18 params, dims [2, 68, 180]
+    conv2 = brew.conv(model, input1, 'conv2', dim_in=1, dim_out=2, kernel=3, stride=1)
+    # 0 params, dims [2, 34, 90]
+    pool3 = brew.max_pool(model, conv2, 'pool3', kernel=2, stride=2)
+    # 72 params, dims [4, 32, 88]
+    conv4 = brew.conv(model, pool3, 'conv4', dim_in=2, dim_out=4, kernel=3, stride=1)
+    # 0 params, dims [4, 16, 44]
+    pool5 = brew.max_pool(model, conv4, 'pool5', kernel=2, stride=2)
+    # 288 params, dims [8, 14, 42]
+    conv6 = brew.conv(model, pool5, 'conv6', dim_in=4, dim_out=8, kernel=3, stride=1)
+    # 0 params, dims [8, 14, 42]
+    relu7 = brew.relu(model, conv6, 'relu7')
+    # 64 params, dims [2, 7, 21]
+    conv8 = brew.conv(model, relu7, 'conv8', dim_in=8, dim_out=2, kernel=2, stride=2)
+    # 0 params, dims [2, 7, 21]
+    relu9 = brew.relu(model, conv8, 'relu9')
+    # 784 params, dims [8, 1, 3]
+    conv10 = brew.conv(model, relu9, 'conv10', dim_in=2, dim_out=8, kernel=7, stride=7)
+    # 0 params, dims [8, 1, 3]
+    relu11 = brew.relu(model, conv10, 'relu11')
+    # 192 params, dims [8]
+    fc12 = brew.fc(model, relu11, 'fc12', dim_in=24, dim_out=8)
+    # 0 params, dims [8]
+    relu13 = brew.relu(model, fc12, 'relu13')
+    # 16 params, dims [2]
+    output = brew.fc(model, relu13, 'output', dim_in=8, dim_out=2)
+    return output
+
+
 def AddNetModel(model, data):
-    return AddNetModel_2(model, data)
+    return AddNetModel_5(model, data)
 
 def AddTrainingOperators(model, output, label):
-    dot = model.L1Distance([output, label], "dot")
-    loss = model.Scale(dot, 'loss', scale=1./BATCH_SIZE)
-    model.AddGradientOperators([loss])
+    loss = model.SquaredL2Distance([output, label], "loss")
+    avgloss = model.AveragedLoss([loss], "avgloss")
+    model.AddGradientOperators([avgloss])
     ITER = brew.iter(model, "iter")
-    stepsize = int(train_iters / 30000)
+    stepsize = int(train_iters / 10000)
     if stepsize < 1:
         stepsize = 1
-    if stepsize > 25:
-        stepsize = 25
+    if stepsize > 100:
+        stepsize = 100
     assert(LEARN_RATE < 0)
     LR = model.LearningRate(
-        ITER, "LR", base_lr=LEARN_RATE, policy="step", stepsize=1, gamma=0.99999 )
+        ITER, "LR", base_lr=LEARN_RATE, policy="step", stepsize=stepsize, gamma=0.99997 )
     ONE = model.param_init_net.ConstantFill([], "ONE", shape=[1], value=1.0)
     for param in model.params:
         param_grad = model.param_to_grad[param]
@@ -77,13 +110,13 @@ def AddBookkeepingOperators(model):
     model.Print('loss', [], to_file=1)
     for param in model.params:
         model.Summarize(param, [], to_file=1)
-    model.Summarize(model.param_to_grad[param], [], to_file=1)
+        model.Summarize(model.param_to_grad[param], [], to_file=1)
 
 def build_networks():
     arg_scope = {"order": "NCHW", "use_cudnn":True}
     train_model = model_helper.ModelHelper(name="donkey_train", arg_scope=arg_scope)
     dbpath = os.path.join(data_folder, 'train')
-    print('dbpath = %s' % (dbpath,))
+    # print('dbpath = %s' % (dbpath,))
     data, label = AddInput(
         train_model, batch_size=BATCH_SIZE,
         db=dbpath,
@@ -152,7 +185,7 @@ def load_crunk(name, device_opts=None):
             size = int(size.strip())
             block = rdf.read(size)
             if shape:
-                print("# ", name, shape, size, len(block))
+                # print("# ", name, shape, size, len(block))
                 block = np.fromstring(block, dtype=np.float32)
                 block = np.reshape(block, shape)
                 workspace.FeedBlob(name, block, device_opts)

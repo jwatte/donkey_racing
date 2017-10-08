@@ -22,7 +22,10 @@ train_model, test_model, deploy_model = build_networks()
 
 test_model.RunAllOnGPU()
 workspace.RunNetOnce(test_model.param_init_net)
-load_crunk(os.path.join(root_folder, "donkey_model_protos.crunk"), device_opts)
+netname = "donkey_model_protos.crunk"
+if len(sys.argv) > 1:
+    netname = sys.argv[1]
+load_crunk(os.path.join(root_folder, netname), device_opts)
 workspace.CreateNet(test_model.net, overwrite=False)
 netname = test_model.net.Proto().name
 

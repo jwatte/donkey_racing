@@ -236,6 +236,11 @@ int trainfds[2] = { -1, -1 };
 pid_t testpid = -1;
 pid_t trainpid = -1;
 
+int keyHashFunction(int q) {
+    q = ((q << 8) & 0xff00) | ((q >> 8) & 0xff) | (q & ~0xffff);
+    return q;
+}
+
 char *wrdata;
 
 void test_write_loop() {
@@ -266,6 +271,7 @@ void test_write_loop() {
         labelProto->set_float_data(0, label[0]);
         labelProto->set_float_data(1, label[1]);
 
+        //  test is ordered, not scrambled
         char dki[12];
         sprintf(dki, "%08d", databaseKeyIndex);
         std::string keyname(dki);
@@ -315,8 +321,9 @@ void train_write_loop() {
         labelProto->set_float_data(0, label[0]);
         labelProto->set_float_data(1, label[1]);
 
+        //  training is scrambled to avoid correlation within batches
         char dki[12];
-        sprintf(dki, "%08d", databaseKeyIndex);
+        sprintf(dki, "%08d", keyHashFunction(databaseKeyIndex));
         std::string keyname(dki);
 
         std::string value;
@@ -560,6 +567,98 @@ void render_vote(unsigned char *fb, int width, int height,
     }
 }
 
+double trace(double const *rm22)
+{
+    return rm22[0] + rm22[3];
+}
+
+double determinant(double const *rm22)
+{
+    return rm22[0] * rm22[3] - rm22[1] * rm22[2];
+}
+
+bool eigenvalues(double const *rm22, double *ov1, double *ov2)
+{
+    double det = determinant(rm22);
+    double tr = trace(rm22);
+    double tr2 = tr * tr;
+    double det4 = 4 * det;
+    if (det4 > tr2) {
+        *ov1 = 0;
+        *ov2 = 0;
+        return false;
+    }
+    double gap = sqrtf(tr2 - det4);
+    *ov1 = (tr + gap) / 2.0;
+    *ov2 = (tr - gap) / 2.0;
+    return true;
+}
+
+bool eigenvectors(double const *rm22, double *ov2a, double *ov2b, double *aev, double *bev)
+{
+    double ev1, ev2;
+    if (!eigenvalues(rm22, &ev1, &ev2) || (fabsf(rm22[1]) < 1e-3 && fabsf(rm22[2]) < 1e-3)) {
+        ov2a[0] = 0;
+        ov2a[1] = 1;
+        ov2b[0] = 1;
+        ov2b[1] = 0;
+        *aev = 1;
+        *bev = 1;
+        return false;
+    }
+    if (fabsf(rm22[2]) >= 1e-3) {
+        ov2a[0] = ev1-rm22[3];
+        ov2a[1] = rm22[2];
+        ov2b[0] = ev2-rm22[3];
+        ov2b[1] = rm22[2];
+    } else {
+        ov2a[0] = rm22[1];
+        ov2a[1] = ev1-rm22[0];
+        ov2b[0] = rm22[1];
+        ov2b[1] = ev2-rm22[0];
+    }
+    double l = 1.0 / sqrt(ov2a[0]*ov2a[0] + ov2a[1]*ov2a[1]);
+    ov2a[0] *= l;
+    ov2a[1] *= l;
+    l = 1.0 / sqrt(ov2b[0]*ov2b[0] + ov2b[1]*ov2b[1]);
+    ov2b[0] *= l;
+    ov2b[1] *= l;
+    *aev = ev1;
+    *bev = ev2;
+    return true;
+}
+
+double calc_cluster_dir(
+    unsigned char const *image, int imwidth, int ix,
+    double xmin, double xmax, double ymin, double ymax,
+    double xavg, double yavg, int counts, double xs2, double ys2, double xys,
+    double ahead, double *strength)
+{
+    double rm22[4] = {
+        xs2, xys, xys, ys2
+    };
+    double vec0[2];
+    double vec1[2];
+    double ev0;
+    double ev1;
+    if (!eigenvectors(rm22, vec0, vec1, &ev0, &ev1)) {
+        *strength *= 0.1;
+        return ahead;
+    }
+    if (fabs(ev1) > fabs(ev0)) {    //  longest vector
+        vec0[0] = vec1[0];
+        vec0[1] = vec1[1];
+        ev0 = ev1;
+    }
+    if (vec0[1] > 0) {  //  pointing down?
+        //  flip it to point ahead
+        vec0[0] = -vec0[0];
+        vec0[1] = -vec0[1];
+    }
+    //  flip x/y to make atan2 return "0 = north, positive = east" values
+    return atan2(vec0[0], -vec0[1]);
+}
+
 unsigned char *cl_temp;
 
 void compute_labels_cv(
@@ -674,16 +773,15 @@ void compute_labels_cv(
     double ys[256] = { 0.0 };
     double xs2[256] = { 0.0 };
     double xys[256] = { 0.0 };
+    double ys2[256] = { 0.0 };
     double xmin[256] = { 0.0 };
     double xmax[256] = { 0.0 };
     double ymin[256] = { 0.0 };
     double ymax[256] = { 0.0 };
-    double xsize[256] = { 0.0 };
-    double ysize[256] = { 0.0 };
     for (int r = 0; r != oph; ++r) {
-        unsigned char *p = cl_temp + r * opw;
+        unsigned char const *p = cl_temp + r * opw;
         for (int c = 0; c != opw; ++c) {
-            unsigned char ix = *p;
+            unsigned char ix = p[c];
             if (ix) {
                 double x = (c - opw/2);
                 double y = (r - oph/2);
@@ -698,29 +796,63 @@ void compute_labels_cv(
                 }
                 xs[ix] += x;
                 ys[ix] += y;
-                xs2[ix] += x * x;
-                xys[ix] += x * y;
                 counts[ix] += 1;
             }
-            ++p;
         }
     }
-
-    //  what constitutes a "big enough" cluster?
-    int const cnt_thresh = 12;
-    //  vote for whether to turn left/right
+    //  calculate weigthed center of cluster
     double xavg[256] = { 0.0 };
     double yavg[256] = { 0.0 };
-    //double lr_a[256] = { 0.0 };
-    double lr_b[256] = { 0.0 };
-    double votes = 0.0;
-    double votecount = 0.0;
+    //  what constitutes a "big enough" cluster?
+    int const cnt_thresh = 12;
     for (int i = 0; i != 256; ++i) {
         xavg[i] = (counts[i] >= cnt_thresh) ? xs[i] / counts[i] : 0.0;
         yavg[i] = (counts[i] >= cnt_thresh) ? ys[i] / counts[i] : 0.0;
-        xsize[i] = xmax[i] - xmin[i] + 1;
-        ysize[i] = ymax[i] - ymin[i] + 1;
         counts[i] = (counts[i] >= cnt_thresh) ? counts[i] : 0;
+    }
+    for (int r = 0; r != oph; ++r) {
+        unsigned char const *p = cl_temp + r * opw;
+        for (int c = 0; c != opw; ++c) {
+            unsigned char ix = p[c];
+            if (counts[ix]) {
+                double cnt = 1.0 / counts[ix];
+                double x = (c - opw/2 - xavg[ix]);
+                double y = (r - oph/2 - yavg[ix]);
+                xs2[ix] += x * x * cnt;
+                xys[ix] += x * y * cnt;
+                ys2[ix] += y * y * cnt;
+            }
+        }
+    }
+
+    double votes = 0.0;
+    double votecount = 0.0;
+    for (int i = 0; i != 256; ++i) {
+        //  vote for whether to turn left/right
+#if 1
+        if (counts[i]) {
+            double straight = atan2(-xavg[i], yavg[i] + 58.0);  //  where is the horizon?
+            double strength = counts[i] / (30.0 + yavg[i] + oph/2); //  magic constant!
+            double clusterdir = calc_cluster_dir(
+                    cl_temp, opw, i,
+                    xmin[i], xmax[i], ymin[i], ymax[i],
+                    xavg[i], yavg[i], counts[i], xs2[i], ys2[i], xys[i],
+                    straight, &strength);
+            if (verbose) {
+                fprintf(stderr,
+                        "calc_cluster_dir(i=%d, cx=%.2f, cy=%.2f, cnt=%d, xs2=%.2f, ys2=%.2f, xys=%.2f) -> %.2f\n",
+                        i, xavg[i], yavg[i], counts[i], xs2[i], ys2[i], xys[i], clusterdir);
+            }
+            votes += (clusterdir - straight) * strength;
+            votecount += strength;
+            render_vote(cl_temp, opw, oph, 
+                    xavg[i], yavg[i], straight, 2, 254);
+            render_vote(cl_temp, opw, oph, 
+                    xavg[i], yavg[i], clusterdir, 2, 253);
+            render_vote(cl_temp, opw, oph, 
+                    xavg[i], yavg[i], (clusterdir-straight), 2, 255);
+        }
+#else
         if (counts[i]) {
             // lr_a[i] = (ys[i] * xs2[i] - xs[i] * xys[i]) /
             //     (counts[i] * xs2[i] - xs[i] * xs[i]);
@@ -738,35 +870,39 @@ void compute_labels_cv(
             //  TODO: magic constant
             double power = counts[i] / (yavg[i] + oph/2 + 50.0);
             double vote = 0.0;
-            double straight = atan2(-xavg[i], yavg[i]+65);  //  where is the horizon?
+            double straight = atan2(-xavg[i], yavg[i]+58);  //  where is the horizon?
             render_vote(cl_temp, outputwidth, outputheight, 
                     xavg[i], yavg[i], straight, 2, 254);
-            if (fabs(direction) < 1e-2) {
-                //  horizontal line? Turn right.
-                votes += 0.25 * power;
-                votecount += power;
-                vote = M_PI / 2;
-            } else {
-                if (fabs(direction) > 1e2) {
-                    //  Too vertical to be numerically reliable, but we 
-                    //  know that vertical on the left means turn left, 
-                    //  and vice versa.
-                    votes += xavg[i] / (opw/2) * power;
-                    votecount += power;
-                    vote = 0;
-                } else {
-                    //  horizontal, square-ish? Reduce power
-                    //  TODO: magic constant
-                    if (fabsf(direction) < 0.5 && fabsf(ysize[i]/xsize[i]-1.0) < 0.2) {
-                        power *= 0.1;
+            if (fabs(direction) < 0.5) {
+                if ((ymax[i] - ymin[i]) > (xmax[i] - xmin[i])) {
+                    if (fabs(direction) < 0.01) {
+                        direction = 0;
+                    } else {
+                        direction = 1.0 / direction;
                     }
-                    direction = -atan(1.0 / direction);
-                    render_vote(cl_temp, outputwidth, outputheight, 
-                            xavg[i], yavg[i], direction, power, 253);
-                    votes += (direction - straight) * power;
-                    votecount += power;
-                    vote = direction - straight;
                 }
+                else if (fabs(direction) < 0.1) {
+                    //  horizontalish clumps steer right
+                    direction = 1;
+                    power *= 0.1;
+                }
+            }
+            if (fabs(direction) > 1e2) {
+                //  Too vertical to be numerically reliable, but we 
+                //  know that vertical on the left means turn left, 
+                //  and vice versa.
+                votes += xavg[i] / (opw/2) * power;
+                votecount += power;
+                vote = 0;
+            } else {
+                direction = -atan(1.0 / direction);
+                double steer = (direction - straight);
+                render_vote(cl_temp, outputwidth, outputheight, 
+                        xavg[i], yavg[i], steer, power, 253);
+                if (steer < -1.0) steer = -1.0; else if (steer > 1.0) steer = 1.0;
+                votes += steer * power;
+                vote = steer;
+                votecount += power;
             }
             if (std::isnan(votes) || std::isnan(votecount)) {
                 fprintf(stderr,
@@ -777,6 +913,7 @@ void compute_labels_cv(
                         xavg[i], yavg[i], vote, power, 255);
             }
         }
+#endif
     }
 
     if (std::isnan(votes) || std::isnan(votecount)) {
@@ -792,8 +929,14 @@ dump_stuff:
         sprintf(name, "png_test/no_cluster_%d_input.png", serial);
         stbi_write_png(name, opw, oph, 1, frame, 0);
     }
-    label[0] = (votecount > 0.01) ? (votes / votecount) : 0.25;
-    label[1] = 0.5 / (fabs(label[0]) + 0.5);
+    label[0] = (votecount > 0.01) ? ((votes / votecount) * 0.5) : 0.25;
+    if (fabs(label[0]) > 1.25) {
+        label[0] = (label[0] < 0) ? -1.25 : 1.25;
+    }
+    label[1] = 0.4 / (fabs(label[0]) + 0.3);
+    if (label[1] > 1.0) {
+        label[1] = 1.0;
+    }
     if (std::isnan(label[0]) || std::isnan(label[1])) {
         fprintf(stderr, "NaN in compute_labels_cv()!\n");
         abort();
@@ -812,7 +955,12 @@ void database_frame(
         fprintf(stderr, "sorry, database only works with 640x480 I420 format input frames\n");
         exit(1);
     }
+    bool record_this = true;
     if (serial < skip) {
+        record_this = false;
+    }
+    if (throttle < 0.05) {
+        record_this = false;
     }
     float mat[6] = { 1, 0, 0, 0, 1, 0 };
     unwarp_transformed_bytes(y, u, v, mat, outputframe);
@@ -823,7 +971,6 @@ void database_frame(
     if (devmode) {
         magically_fix_labeling(serial, outputframe, label);
     }
-    bool record_this = true;
     if (label[0] < -1.0f || label[0] > 1.0f || label[1] < 0.01f) {
         record_this = false;
     }
@@ -853,26 +1000,31 @@ void database_frame(
     if (record_this) {
         put_to_database(outputframe, label);
         ++numWritten;
+        if (devmode || dumppng) {
+            if (!(serial & 127)) {
+                mkdir ("png_test", 0777);
+                char name[100];
+                sprintf(name, "png_test/%06d_%.2f_%.2f.png", serial, label[0], label[1]);
+                stbi_write_png(name, outputwidth, outputheight, 1,
+                        (unsigned char const *)outputframe, 0);
+                if (computelabels) {
+                    sprintf(name, "png_test/%06d_%.2f_%.2f_cluster.png", serial, label[0], label[1]);
+                    write_false_color(name, outputwidth, outputheight, (unsigned char const *)cl_temp);
+                }
+            }
+        }
         for (int i = 0; i != stretchData; ++i) {
-            m2_rotation(stretch_random() * 2 * stretchRotate - stretchRotate, mat);
-            mat[2] = stretch_random() * 2 * stretchOffset - stretchOffset;
-            mat[5] = stretch_random() * 2 * stretchOffset - stretchOffset;
+            float mxl[6], tmp[6];
+            m2_translation(-320, -240, mxl);
+            m2_rotation(stretch_random() * 2 * stretchRotate - stretchRotate, tmp);
+            m2_mul(tmp, mxl, mat);
+            float offsetx = stretch_random() * 2 * stretchOffset - stretchOffset;
+            float offsety = stretch_random() * 2 * stretchOffset - stretchOffset;
+            mat[2] += offsetx + 320;
+            mat[5] += offsety + 240;
             unwarp_transformed_bytes(y, u, v, mat, outputframe);
             put_to_database(outputframe, label);
             ++numWritten;
-            if (devmode || dumppng) {
-                if (!(serial & 127)) {
-                    mkdir ("png_test", 0777);
-                    char name[100];
-                    sprintf(name, "png_test/%06d_%d_%.2f_%.2f.png", serial, i, label[0], label[1]);
-                    stbi_write_png(name, outputwidth, outputheight, 1,
-                            (unsigned char const *)outputframe, 0);
-                    if (computelabels && i == 0) {
-                        sprintf(name, "png_test/%06d_%d_%.2f_%.2f_cluster.png", serial, i, label[0], label[1]);
-                        write_false_color(name, outputwidth, outputheight, (unsigned char const *)cl_temp);
-                    }
-                }
-            }
         }
     } else {
         numSkipped += 1;
