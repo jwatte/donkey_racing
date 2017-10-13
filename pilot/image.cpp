@@ -12,7 +12,7 @@ void get_unwarp_info(size_t *osize, int *owidth, int *oheight, int *oplanes) {
     *owidth = RECTIFIED_WIDTH;
     *oheight = RECTIFIED_HEIGHT;
     *oplanes = 1;
-    *osize = RECTIFIED_WIDTH * RECTIFIED_HEIGHT * 2 * sizeof(float);
+    *osize = RECTIFIED_WIDTH * RECTIFIED_HEIGHT * 1 * sizeof(float);
 }
 
 static const float BYTE_TO_FLOAT = 1.0f / 255.0f;

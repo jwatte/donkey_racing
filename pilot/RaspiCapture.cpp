@@ -392,6 +392,7 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
         Encoder_BufferSize.sample(bytes_written);
 
         if (pstate->shouldRecord) {
+
             //  keyframe?
             if (buffer->flags & MMAL_BUFFER_HEADER_FLAG_CONFIG) {
                 //  start each new segment on a keyframe, so close if we've filled the time segment size
@@ -411,8 +412,10 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
                     pData->segment_start_time = 0;
                 }
             }
+
             //  If I have a file and have data, write data to the file!
             if (pData->file_handle != NULL && buffer->length) {
+
                 mmal_buffer_header_mem_lock(buffer);
                 if(buffer->flags & MMAL_BUFFER_HEADER_FLAG_CODECSIDEINFO) {
                     //We do not want to save inlineMotionVectors...
@@ -435,8 +438,7 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
 
                 mmal_buffer_header_mem_unlock(buffer);
 
-                if (bytes_written != (int)buffer->length)
-                {
+                if (bytes_written != (int)buffer->length) {
                     vcos_log_error("Failed to write buffer data (%d from %d)- aborting", bytes_written, buffer->length);
                     pstate->shouldRecord = false;
                     fclose(pData->file_handle);

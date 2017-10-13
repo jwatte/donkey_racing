@@ -21,11 +21,8 @@
 static char errbuf[256];
 static FrameQueue guiFromNetwork(3, 0, 0, 0, 0);
 static Texture netTextureY;
-static Texture netTextureU;
 static Mesh netMeshY;
-static Mesh netMeshU;
 static MeshDrawOp drawMeshY;
-static MeshDrawOp drawMeshU;
 static int im_width;
 static int im_height;
 static int im_planes;
@@ -38,10 +35,16 @@ static uint16_t ibusData[10];
 static SteerControl steerControlData;
 
 
+static bool drawMetrics = false;
+
 void do_click(int mx, int my, int btn, int st) {
     fprintf(stderr, "click detected %d %d %d %d; exiting\n", 
             mx, my, btn, st);
-    exit(1);
+    if (mx > 400 && my < 100) {
+        drawMetrics = !drawMetrics;
+    } else {
+        exit(1);
+    }
 }
 
 void do_move(int x, int y, unsigned int btns) {
@@ -57,13 +60,12 @@ static double fastFps = 15.0f;
 void do_draw() {
     uint64_t now = metric::Collector::clock();
     gg_draw_mesh(&drawMeshY);
-    gg_draw_mesh(&drawMeshU);
     char fpsText[20];
     fastFps = fastFps * 0.9 + 1e6 / (now - lastLoop) * 0.1;
     sprintf(fpsText, "%4.1f %4.1f", meanFps, fastFps);
     gg_draw_text(3, 3, 0.75f, fpsText, color::textred);
 
-    if (drawFlags) {
+    if (drawMetrics && drawFlags) {
         int y = 2;
         for (metric::Flag const *f = metric::Collector::iterFlags(); f; f = metric::Collector::nextFlag(f)) {
             bool flag = false;
@@ -97,7 +99,7 @@ void do_draw() {
         }
     }
 
-    if (drawIbus) {
+    if (drawMetrics && drawIbus) {
         for (int i = 0; i != 10; ++i) {
             char buf[12];
             sprintf(buf, "%4d", ibusData[i]); 
@@ -105,7 +107,7 @@ void do_draw() {
         }
     }
 
-    if (framesDrawn == 64) {
+    if ((framesDrawn == 64) || (now - framesStart > 1000000)) {
         double newFps = framesDrawn * 1e6 / (now - framesStart);
         Graphics_Fps.sample(newFps);
         framesDrawn = 0;
@@ -183,15 +185,8 @@ void do_idle() {
                 *t++ = byte_from_float(*f++);
             }
         }
-        for (int r = 0; r != im_height; ++r) {
-            t = (unsigned char *)netTextureU.mipdata[0] + netTextureU.width * r;
-            for (int c = 0; c != im_width; ++c) {
-                *t++ = byte_from_float(*f++);
-            }
-        }
         fr->endRead();
         gg_update_texture(&netTextureY, 0, im_width, 0, im_height);
-        gg_update_texture(&netTextureU, 0, im_width, 0, im_height);
     }
 
 }
@@ -232,13 +227,6 @@ float guiPictureVbufY[] = {
 68,352,0,1,
 };
 
-float guiPictureVbufU[] = {
-434,470,0,0,
-732,470,1,0,
-732,352,1,1,
-434,352,0,1,
-};
-
 unsigned short guiPictureIbuf[] = {
 0,1,2,
 2,3,0,
@@ -246,26 +234,18 @@ unsigned short guiPictureIbuf[] = {
 
 bool build_gui() {
     gg_allocate_texture(NULL, im_width, im_height, 1, 1, &netTextureY);
-    gg_allocate_texture(NULL, im_width, im_height, 1, 1, &netTextureU);
     float su = float(im_width) / netTextureY.width;
-    float sv = float(im_height) / netTextureU.height;
+    float sv = float(im_height) / netTextureY.height;
     for (int i = 0; i != 4; ++i) {
         guiPictureVbufY[4*i+2] *= su;
         guiPictureVbufY[4*i+3] *= sv;
-        guiPictureVbufU[4*i+2] *= su;
-        guiPictureVbufU[4*i+3] *= sv;
     }
     gg_allocate_mesh(guiPictureVbufY, 16, 16, guiPictureIbuf, 6, 8, 0, &netMeshY, 0);
-    gg_allocate_mesh(guiPictureVbufU, 16, 16, guiPictureIbuf, 6, 8, 0, &netMeshU, 0);
     drawMeshY.program = gg_compile_named_program("gui-texture", errbuf, sizeof(errbuf));
     drawMeshY.texture = &netTextureY;
     drawMeshY.mesh = &netMeshY;
     drawMeshY.transform = gg_gui_transform();
     gg_init_color(drawMeshY.color, 0, 1, 1, 1);
-    drawMeshU = drawMeshY;
-    drawMeshU.texture = &netTextureU;
-    drawMeshU.mesh = &netMeshU;
-    gg_init_color(drawMeshU.color, 1, 1, 0, 1);
     return true;
 }
 

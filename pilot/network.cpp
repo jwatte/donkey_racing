@@ -73,38 +73,6 @@ bool load_network_db(char const *name) {
 }
 
 bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output) {
-    // conv1_w: (8, 2, 4, 4)
-    // conv1_b: (8,)
-    // conv2_w: (16, 8, 4, 4)
-    // conv2_b: (16,)
-    // conv3_w: (32, 16, 4, 4)
-    // conv3_b: (32,)
-    // fc4_w: (128, 320)
-    // fc4_b: (128,)
-    // output_w: (2, 128)
-    // output_b: (2,)
-/*
-# 149x59 -> 146x56                                                                                                  
-conv1 = brew.conv(model, data, 'conv1', dim_in=2, dim_out=8, kernel=4)                                              
-# 146x56 -> 73x28                                                                                                   
-pool1 = brew.max_pool(model, conv1, 'pool1', kernel=2, stride=2)                                                    
-relu1 = brew.relu(model, pool1, 'relu1')                                                                            
-# 73x28 -> 70x25                                                                                                    
-conv2 = brew.conv(model, relu1, 'conv2', dim_in=8, dim_out=16, kernel=4)                                            
-# 70x25 -> 14x5                                                                                                     
-pool2 = brew.max_pool(model, conv2, 'pool2', kernel=5, stride=5)                                                    
-relu2 = brew.relu(model, pool2, 'relu2')                                                                            
-# 14x5 -> 11x2                                                                                                      
-conv3 = brew.conv(model, relu2, 'conv3', dim_in=16, dim_out=32, kernel=4)                                           
-# 11x2 -> 10x1                                                                                                      
-pool3 = brew.max_pool(model, conv3, 'pool3', kernel=2)                                                              
-relu3 = brew.relu(model, pool3, 'relu3')                                                                            
-# 10x1x32 -> 128                                                                                                    
-fc4 = brew.fc(model, relu3, 'fc4', dim_in=10*1*32, dim_out=128)                                                     
-relu4 = brew.relu(model, fc4, 'relu4')                                                                              
-# 128 -> 2                                                                                                          
-output = brew.fc(model, relu4, 'output', dim_in=128, dim_out=2)                                                     
-*/
     input = wks->CreateBlob("input");
     input->Reset((float *)new float[2*59*249]);
     output = wks->CreateBlob("output");
@@ -136,9 +104,9 @@ bool load_network(char const *name, FrameQueue *output) {
         size_t size;
         int width, height, planes;
         get_unwarp_info(&size, &width, &height, &planes);
-        assert(planes == 2);
-        assert(width == 149);
-        assert(height == 59);
+        assert(planes == 1);
+        assert(width == 182);
+        assert(height == 70);
 
 #if 0
         if (!load_network_db(name)) {
