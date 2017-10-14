@@ -2,6 +2,7 @@
 #include "queue.h"
 #include "image.h"  //  for warp size
 #include "pipeline.h"
+#include "crunk.h"
 #include <assert.h>
 #include <unistd.h>
 
@@ -20,7 +21,9 @@ static FrameQueue *networkInput;
 static Pipeline *networkPipeline;
 bool gNetworkFailed;
 
-caffe2::Workspace gWorkspace[3];
+using namespace caffe2;
+
+Workspace gWorkspace[3];
 
 static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *, int index) {
     //  do the thing!
@@ -32,7 +35,6 @@ static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *, int in
     }
 }
 
-#if 0
 std::map<std::string, float *> networkBlobs;
 
 bool load_network_db(char const *name) {
@@ -45,7 +47,7 @@ bool load_network_db(char const *name) {
             return false;
         }
         fgets(line, 1024, f);
-        if (!strcmp(line, "crunk 1.0\n")) {
+        if (strcmp(line, "crunk 1.0\n")) {
             fprintf(stderr, "%s: not a crunk file\n", name);
             fclose(f);
             return false;
@@ -55,6 +57,7 @@ bool load_network_db(char const *name) {
         std::string colon_net = ":NET";
         float *value;
         while (read_crunk_block(f, key, info, value)) {
+            fprintf(stderr, "got block: %s\n", key.c_str());
             if (key == colon_net) {
                 //  do nothing
                 delete[] value;
@@ -69,34 +72,120 @@ bool load_network_db(char const *name) {
         fprintf(stderr, "Could not load network %s (unknown error)\n", name);
         return false;
     }
+    fprintf(stderr, "loaded %d blocks; done loading %s\n", (int)networkBlobs.size(), name);
     return true;
 }
 
+
+OperatorBase *mkconv(Workspace *wks, char const *name, char const *input,
+        int kernel, int stride, int dims_in, int dims_out) {
+    OperatorDef def;
+    def.add_input(input);
+    def.add_input(std::string(name) + "_w");
+    def.add_input(std::string(name) + "_b");
+    def.add_output(name);
+    def.set_name(name);
+    def.set_type("Conv");
+    AddArgument<int>("kernel", kernel, &def);
+    AddArgument<int>("stride", stride, &def);
+    AddArgument<int>("dim_in", dims_in, &def);
+    AddArgument<int>("dim_out", dims_out, &def);
+    return CreateOperator(def, wks).release();
+}
+
+OperatorBase *mkpool(Workspace *wks, char const *name, char const *input,
+        int kernel, int stride, int dims) {
+    OperatorDef def;
+    def.add_input(input);
+    def.add_output(name);
+    def.set_name(name);
+    def.set_type("MaxPool");
+    AddArgument<int>("kernel", kernel, &def);
+    AddArgument<int>("stride", stride, &def);
+    AddArgument<int>("dims", dims, &def);
+    return CreateOperator(def, wks).release();
+}
+
+OperatorBase *mkrelu(Workspace *wks, char const *name, char const *input,
+        int dims) {
+    OperatorDef def;
+    def.add_input(input);
+    def.add_output(name);
+    def.set_name(name);
+    def.set_type("Relu");
+    AddArgument<int>("dims", dims, &def);
+    return CreateOperator(def, wks).release();
+}
+
+OperatorBase *mkfc(Workspace *wks, char const *name, char const *input,
+        int dims_in, int dims_out) {
+    OperatorDef def;
+    def.add_input(input);
+    def.add_input(std::string(name) + "_w");
+    def.add_input(std::string(name) + "_b");
+    def.add_output(name);
+    def.set_name(name);
+    def.set_type("FC");
+    return CreateOperator(def, wks).release();
+}
+
 bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output) {
+    for (auto const kv : networkBlobs) {
+        Blob *bb = wks->CreateBlob(kv.first);
+        bb->ShareExternal<float>((float *)kv.second);
+    }
     input = wks->CreateBlob("input");
     input->Reset((float *)new float[2*59*249]);
     output = wks->CreateBlob("output");
-    putput->Reset((float *)new float[2]);
-    for (auto const kv : networkBlobs) {
-        Blob *bb = wks->CreateBlob(kv.first);
-        bb->ShareExternal(kv.second);
-    }
+    output->Reset((float *)new float[2]);
 
-    CONV("conv1", "Conv",    "input", "conv1", 4, 1, 2, 8);
-    POOL("pool1", "MaxPool", "conv1", "pool1", 2, 2, 8);
-    RELU("relu1", "Relu",    "pool1", "relu1", 8);
-    CONV("conv2", "Conv",    "pool1", "conv2", 4, 1, 8, 16);
-    POOL("pool2", "MaxPool", "conv2", "pool2", 5, 5, 16);
-    RELU("relu2", "Relu",    "pool2", "relu2", 16);
-    CONF("conv3", "Conv",    "pool2", "conv3", 4, 1, 16, 32);
-    POOL("pool3", "MaxPool", "conv3", "pool3", 2, 2, 32);
-    RELU("relu3", "Relu",    "pool3", "relu3", 32);
-    FC  ("fc4",   "FC",      "relu3", "fc4",   320, 128);
-    RELU("relu4", "Relu",    "fc4",   "relu4", 128);
-    FC  ("fc5",   "FC",      "relu4", "output",128, 2);
+#define CONV(n, i, k, s, di, dd) \
+    mkconv(wks, n, i, k, s, di, dd)
+#define POOL(n, i, k, s, d) \
+    mkpool(wks, n, i, k, s, d)
+#define RELU(n, i, d) \
+    mkrelu(wks, n, i, d)
+#define FC(n, i, di, dd) \
+    mkfc(wks, n, i, di, dd)
+
+#if 0
+
+    /*
+    // This is a LeNet-like model
+    //
+    def AddNetModel_2(model, data):
+        # 182x70x1 -> 90x34x3
+        conv1 = brew.conv(model, data, 'conv1', dim_in=1, dim_out=3, kernel=3)
+        pool1 = brew.max_pool(model, conv1, 'pool1', kernel=2, stride=2)
+        # 90x34x3 -> 44x16x5
+        conv2 = brew.conv(model, pool1, 'conv2', dim_in=3, dim_out=5, kernel=3)
+        pool2 = brew.max_pool(model, conv2, 'pool2', kernel=2, stride=2)
+        # 44x16x5 -> 21x7x7
+        conv3 = brew.conv(model, pool2, 'conv3', dim_in=5, dim_out=7, kernel=3)
+        pool3 = brew.max_pool(model, conv3, 'pool3', kernel=2, stride=2)
+        relu4 = brew.relu(model, pool3, 'relu4')
+        # 21x7x7 -> 2
+        fc5 = brew.fc(model, relu4, 'fc5', dim_in=21*7*7, dim_out=16)
+        relu5 = brew.relu(model, fc5, 'relu5')
+        output = brew.fc(model, relu5, 'output', dim_in=16, dim_out=2)
+        return output
+    */
+#endif
+
+    CONV("conv1", "input", 3, 1, 1, 3);
+    POOL("pool1", "conv1", 2, 2, 3);
+    CONV("conv2", "pool1", 3, 1, 3, 5);
+    POOL("pool2", "conv2", 2, 2, 5);
+    CONV("conv3", "pool2", 3, 1, 5, 7);
+    POOL("pool3", "conv3", 2, 2, 7);
+    RELU("relu4", "pool3", 7);
+    FC  ("fc5",   "relu4", 21*7*7, 16);
+    RELU("relu5", "fc5",   16);
+    FC  ("output","relu5", 16, 2);
+
+    return true;
 }
 
-#endif
 
 
 bool load_network(char const *name, FrameQueue *output) {
@@ -108,18 +197,17 @@ bool load_network(char const *name, FrameQueue *output) {
         assert(width == 182);
         assert(height == 70);
 
-#if 0
         if (!load_network_db(name)) {
             gNetworkFailed = true;
         } else {
             for (int i = 0; i != 3; ++i) {
-                if (!instantiate_network(&gWorkspace[i])) {
+                Blob *input = nullptr, *output = nullptr;
+                if (!instantiate_network(&gWorkspace[i], input, output)) {
                     fprintf(stderr, "Could not create network index %d\n", i);
                     gNetworkFailed = true;
                 }
             }
         }
-#endif
 
         networkInput = new FrameQueue(5, size, width, height, 8);
         networkPipeline = new Pipeline(process_network);

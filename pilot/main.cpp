@@ -8,6 +8,7 @@
 #include "../stb/stb_image_write.h"
 #include "serial.h"
 #include "../teensy_rc_control/Packets.h"
+#include <caffe2/core/logging_is_google_glog.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -318,6 +319,7 @@ bool configure_metrics() {
 }
 
 int main(int argc, char const *argv[]) {
+    google::InitGoogleLogging("pilot");
     mkdir("/var/tmp/pilot", 0775);
     if (load_settings("pilot")) {
         fprintf(stderr, "Loaded settings from '%s'\n", "pilot");

@@ -4,7 +4,7 @@ CFILES:=$(wildcard *.c)
 CPPFILES:=$(wildcard *.cpp)
 C_O:=$(patsubst %.c,obj/%.o,$(CFILES))
 CPP_O:=$(patsubst %.cpp,obj/%.o,$(CPPFILES))
-LIBS:=-lpthread -Wl,--no-whole-archive -lCaffe2_CPU -lglog
+LIBS:=-lpthread -Wl,--no-whole-archive -lCaffe2_CPU -lglog -lprotobuf
 OPT?=-O0
 CFLAGS:=-Wall -Werror $(OPT) -I/usr/local/include -I/usr/local/src/caffe2/third_party/eigen
 CPPFLAGS:=$(CFLAGS) -std=gnu++11 -Wno-deprecated
