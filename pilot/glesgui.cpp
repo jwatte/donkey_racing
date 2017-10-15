@@ -415,6 +415,32 @@ void gg_clear_named_programs() {
     }
 }
 
+void size_texture(GLuint texture, unsigned int w, unsigned int h, GLenum iformat, GLenum xformat, unsigned int d) {
+    unsigned int miplevels = d;
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, iformat, w, h, 0, xformat, GL_UNSIGNED_BYTE, NULL);
+    if (!check()) {
+        fprintf(stderr, "glTexImage2D(): iformat=%d, w=%d, h=%d, xformat=%d\n", iformat, w, h, xformat);
+    }
+    while (d > 1) {
+        d--;
+        w >>= 1;
+        h >>= 1;
+        glTexImage2D(GL_TEXTURE_2D, miplevels - d, iformat, w, h, 0, xformat, GL_UNSIGNED_BYTE, NULL);
+        if (!check()) {
+            fprintf(stderr, "glTexImage2D(): mip=%d, iformat=%d, w=%d, h=%d, xformat=%d\n",
+                    miplevels-d, iformat, w, h, xformat);
+        }
+    }
+
+    /* set filtering parameters */
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, miplevels > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    check();
+}
+
 
 void gg_allocate_texture(void const *data, unsigned int width, unsigned int height, unsigned int mipmaps, unsigned int format, Texture *oTex) {
 
@@ -450,10 +476,6 @@ void gg_allocate_texture(void const *data, unsigned int width, unsigned int heig
     oTex->format = format;
     oTex->mipdata = NULL;
 
-    /* allocate VRAM */
-    glGenTextures(1, &oTex->texture);
-    glBindTexture(GL_TEXTURE_2D, oTex->texture);
-    boundTexture = (unsigned int)-1;
 #if ALWAYS_RGBA
     unsigned int iformat = GL_RGBA;
     unsigned int xformat = GL_RGBA;
@@ -461,27 +483,12 @@ void gg_allocate_texture(void const *data, unsigned int width, unsigned int heig
     unsigned int iformat = format == 1 ? GL_ALPHA : format == 3 ? GL_RGB : GL_RGBA;
     unsigned int xformat = format == 1 ? GL_ALPHA : format == 3 ? GL_RGB : GL_RGBA;
 #endif
-    glTexImage2D(GL_TEXTURE_2D, 0, iformat, w, h, 0, xformat, GL_UNSIGNED_BYTE, NULL);
-    if (!check()) {
-        fprintf(stderr, "glTexImage2D(): iformat=%d, w=%d, h=%d, xformat=%d\n", iformat, w, h, xformat);
-    }
-    while (d > 1) {
-        d--;
-        w >>= 1;
-        h >>= 1;
-        glTexImage2D(GL_TEXTURE_2D, oTex->miplevels - d, iformat, w, h, 0, xformat, GL_UNSIGNED_BYTE, NULL);
-        if (!check()) {
-            fprintf(stderr, "glTexImage2D(): mip=%d, iformat=%d, w=%d, h=%d, xformat=%d\n",
-                    oTex->miplevels-d, iformat, w, h, xformat);
-        }
-    }
-
-    /* set filtering parameters */
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, oTex->miplevels > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    check();
+    /* allocate VRAM */
+    glGenTextures(1, &oTex->texture);
+    glGenTextures(1, &oTex->dbl_texture);
+    boundTexture = (unsigned int)-1;
+    size_texture(oTex->dbl_texture, w, h, iformat, xformat, d);
+    size_texture(oTex->texture, w, h, iformat, xformat, d);
 
     /* allocate storage */
     size_t needed = oTex->miplevels * sizeof(void *);
@@ -628,6 +635,7 @@ static void gg_convert_upload(int miplevel, int left, int top, int width, int he
 #endif
 
 void gg_update_texture(Texture *tex, unsigned int left, unsigned int width, unsigned int top, unsigned int height) {
+    std::swap(tex->texture, tex->dbl_texture);
     assert(tex->mipdata);
     glBindTexture(GL_TEXTURE_2D, tex->texture);
     boundTexture = (unsigned int)-1;
@@ -661,6 +669,7 @@ void gg_update_texture(Texture *tex, unsigned int left, unsigned int width, unsi
 void gg_clear_texture(Texture *tex) {
     free(tex->mipdata);
     glDeleteTextures(1, &tex->texture);
+    glDeleteTextures(1, &tex->dbl_texture);
     check();
     boundTexture = (unsigned int)-1;
 }
@@ -674,14 +683,27 @@ Texture const *gg_load_named_texture(char const *name, char *error, size_t esize
     std::string fn("data/");
     fn += name;
     int x, y, n;
-    unsigned char *data = stbi_load(fn.c_str(), &x, &y, &n, 0);
-    if (!data) {
-        return NULL;
+    char const *extn[] = {
+        ".tga",
+        ".png",
+        ".jpg",
+        0
+    };
+    for (char const **pp = extn; *pp; ++pp) {
+        std::string f2(fn);
+        f2 += std::string(*pp);
+        unsigned char *data = stbi_load(f2.c_str(), &x, &y, &n, 0);
+        if (!data) {
+            continue;
+        }
+        Texture *t = &gNamedTextures[name];
+        gg_allocate_texture(data, x, y, 0, n, t);
+        stbi_image_free(data);
+        return t;
     }
-    Texture *t = &gNamedTextures[name];
-    gg_allocate_texture(data, x, y, 0, n, t);
-    stbi_image_free(data);
-    return t;
+    snprintf(error, esize, "%s: texture not found", name);
+    error[esize-1] = 0;
+    return NULL;
 }
 
 void gg_clear_named_textures() {
@@ -691,33 +713,6 @@ void gg_clear_named_textures() {
     gNamedTextures.clear();
 }
 
-
-/* Meshes
-
-struct Mesh {
-    unsigned int vertexbuf;
-    unsigned int vertexsize;
-    unsigned int numvertices;
-    unsigned int indexbuf;
-    unsigned int numindices;
-    unsigned char desc_tex;
-    unsigned char desc_color;
-    unsigned char desc_normal;
-    unsigned char flags;
-};
-
-struct MeshDrawOp {
-    Program const *program;
-    Texture const *texture;
-    Mesh const *mesh;
-    float offset[2];
-    float color[4];
-};
-
-#define MESH_FLAG_DYNAMIC 0x1
-#define MESH_FLAG_COLOR_BYTES 0x2
-
-*/
 
 void gg_allocate_mesh(void const *mdata, unsigned int vertexbytes, unsigned int numvertices, unsigned short const *indices, unsigned int numindices, unsigned int tex_offset, unsigned int color_offset, Mesh *oMesh, unsigned int flags) {
     check();
@@ -729,37 +724,52 @@ void gg_allocate_mesh(void const *mdata, unsigned int vertexbytes, unsigned int 
     oMesh->desc_color = color_offset;
     oMesh->flags = flags;
     glGenBuffers(1, &oMesh->vertexbuf);
+    glGenBuffers(1, &oMesh->dbl_vertexbuf);
     glGenBuffers(1, &oMesh->indexbuf);
+    glGenBuffers(1, &oMesh->dbl_indexbuf);
     check();
-    gg_update_mesh(oMesh, mdata, 0, numvertices, indices, 0, numindices);
+    gg_set_mesh(oMesh, mdata, numvertices, indices, numindices);
 }
 
-void gg_update_mesh(Mesh *mesh, void const *mdata, unsigned int fromvertex, unsigned int numvertices, unsigned short const *indices, unsigned int fromindex, unsigned int numindices) {
-    glBindBuffer(GL_ARRAY_BUFFER, mesh->vertexbuf);
-    if (fromvertex+numvertices > mesh->numvertices || !(mesh->flags & MESH_FLAG_DYNAMIC) || !numvertices) {
-        mesh->numvertices = fromvertex + numvertices;
+void gg_set_mesh(Mesh *mesh, void const *mdata, unsigned int numvertices, unsigned short const *indices, unsigned int numindices) {
+    if (numvertices > mesh->numvertices || !(mesh->flags & MESH_FLAG_DYNAMIC) || !numvertices) {
+        mesh->numvertices = numvertices;
+        glBindBuffer(GL_ARRAY_BUFFER, mesh->vertexbuf);
+        glBufferData(GL_ARRAY_BUFFER, mesh->vertexsize * (GLuint)mesh->numvertices, NULL, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, mesh->dbl_vertexbuf);
         glBufferData(GL_ARRAY_BUFFER, mesh->vertexsize * (GLuint)mesh->numvertices, NULL, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
         check();
+    } else {
+        glBindBuffer(GL_ARRAY_BUFFER, mesh->dbl_vertexbuf);
     }
-    glBufferSubData(GL_ARRAY_BUFFER, mesh->vertexsize * (GLuint)fromvertex, mesh->vertexsize * (GLuint)numvertices, mdata);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, mesh->vertexsize * (GLuint)numvertices, mdata);
     check();
+
     if (numindices) {
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->indexbuf);
-        if (fromindex+numindices > mesh->numindices || !(mesh->flags & MESH_FLAG_DYNAMIC) || !numindices) {
-            mesh->numindices = fromindex + numindices;
+        if (numindices > mesh->numindices || !(mesh->flags & MESH_FLAG_DYNAMIC) || !numindices) {
+            mesh->numindices = numindices;
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->indexbuf);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->numindices * (GLuint)2, NULL, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->dbl_indexbuf);
             glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh->numindices * (GLuint)2, NULL, (mesh->flags & MESH_FLAG_DYNAMIC) ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW);
             check();
+        } else {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->dbl_indexbuf);
         }
-        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 2 * (GLuint)fromindex, 2 * (GLuint)numindices, indices);
+        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, 2 * (GLuint)numindices, indices);
     } else {
         mesh->numindices = 0;
     }
     check();
+    std::swap(mesh->vertexbuf, mesh->dbl_vertexbuf);
+    std::swap(mesh->indexbuf, mesh->dbl_indexbuf);
 }
 
 void gg_clear_mesh(Mesh *mesh) {
     glDeleteBuffers(1, &mesh->vertexbuf);
+    glDeleteBuffers(1, &mesh->dbl_vertexbuf);
     glDeleteBuffers(1, &mesh->indexbuf);
+    glDeleteBuffers(1, &mesh->dbl_indexbuf);
     check();
     memset(mesh, 0, sizeof(*mesh));
 }
@@ -1153,7 +1163,7 @@ void gg_run(void (*idlefn)()) {
             cb_draw();
         }
         if (boxVertices.size()) {
-            gg_update_mesh(&boxMesh, &boxVertices[0], 0, boxVertices.size(), &boxIndices[0], 0, boxIndices.size());
+            gg_set_mesh(&boxMesh, &boxVertices[0], boxVertices.size(), &boxIndices[0], boxIndices.size());
             boxMesh.numvertices = boxVertices.size();
             boxMesh.numindices = boxIndices.size();
             MeshDrawOp mdo = { boxProgram, NULL, &boxMesh, guiTransform, { 1, 1, 1, 1 } };
@@ -1162,7 +1172,7 @@ void gg_run(void (*idlefn)()) {
             boxIndices.clear();
         }
         if (lineVertices.size()) {
-            gg_update_mesh(&lineMesh, &lineVertices[0], 0, lineVertices.size(), NULL, 0, 0);
+            gg_set_mesh(&lineMesh, &lineVertices[0], lineVertices.size(), NULL, 0);
             lineMesh.numvertices = lineVertices.size();
             lineMesh.numindices = 0;
             MeshDrawOp mdo = { boxProgram, NULL, &lineMesh, guiTransform, { 1, 1, 1, 1 }, PK_Lines };
@@ -1170,7 +1180,7 @@ void gg_run(void (*idlefn)()) {
             lineVertices.clear();
         }
         if (textVertices.size()) {
-            gg_update_mesh(&fontMesh, &textVertices[0], 0, textVertices.size(), &textIndices[0], 0, textIndices.size());
+            gg_set_mesh(&fontMesh, &textVertices[0], textVertices.size(), &textIndices[0], textIndices.size());
             fontMesh.numvertices = textVertices.size();
             fontMesh.numindices = textIndices.size();
             MeshDrawOp mdo = { fontProgram, &fontTexture, &fontMesh, guiTransform, { 1, 1, 1, 1 } };

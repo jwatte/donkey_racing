@@ -4,6 +4,8 @@
 #include "pipeline.h"
 #include "crunk.h"
 #include "metrics.h"
+#include "settings.h"
+#include "serial.h"
 #include "../stb/stb_image_write.h"
 #include <assert.h>
 #include <unistd.h>
@@ -30,6 +32,7 @@ bool gNetworkFailed;
 
 using namespace caffe2;
 
+static bool running_status = true;
 static Workspace gWorkspace[3];
 static Blob *inputs[3];
 static Blob *outputs[3];
@@ -39,7 +42,21 @@ static std::map<std::string, std::vector<TIndex>> blobShapes;
 static uint64_t clocks[3];
 static uint64_t starts[3];
 static int counts[3];
-static int ndump = 0;
+
+
+float gSteerAdjust = 0.5f;
+float gThrottleBase = 2.5f;
+float gThrottleAdjust = 0.4f;
+
+static float steer_adjust(float steer) {
+    steer = steer * gSteerAdjust;
+    return (steer > 1.0f) ? 1.0f : (steer < -1.0f) ? -1.0f : steer;
+}
+
+static float throttle_adjust(float throttle) {
+    throttle = (throttle - gThrottleBase) * gThrottleAdjust;
+    return (throttle > 1.0f) ? 1.0f : (throttle < 0.0f) ? 0.0f : throttle;
+}
 
 
 static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *, int index) {
@@ -51,18 +68,11 @@ static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *, int in
     }
     inputs[index]->GetMutable<Tensor<CPUContext>>()->FreeMemory();
     float const *output = (float const *)outputs[index]->Get<Tensor<CPUContext>>().data<float>();
-    fprintf(stderr, "\rNet index %1d: steer %8.2f throttle %8.2f  ", index, output[0], output[1]);
-    if (index == 2 && ((++ndump & 256) == 10)) {
-        float *sdata = (float *)src->data_;
-        char buf[80];
-        sprintf(buf, "/var/tmp/pilot/dump/dump-%06d-%.2f-%.2f.png", ndump, output[0], output[1]);
-        static unsigned char cbuf[182*70*1];
-        for (int i = 0; i != 182*70*1; ++i) {
-            cbuf[i] = sdata[i] < 0 ? 0 : sdata[i] > 1 ? 255 : (unsigned char)(sdata[i] * 255);
-        }
-        stbi_write_png(buf, 182, 70, 1, cbuf, 0);
-        fprintf(stderr, "\nwrote %s\n", buf);
+    if (running_status)
+    {
+        fprintf(stderr, "\rNet index %1d: steer %8.2f throttle %8.2f  ", index, output[0], output[1]);
     }
+    serial_steer(steer_adjust(output[0]), throttle_adjust(output[1]));
     if (dst) {
         //  the other queue will be responsible for this buffer
         dst->link(src);
@@ -74,7 +84,7 @@ static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *, int in
     if (counts[index] == 50 || clocks[index] > 1000000) {
         double fps = counts[index] / (starts[index] - end);
         double msper = clocks[index] / (1000.0 * counts[index]);
-        fprintf(stderr, "\nindex %d avgtime %.1f ms\n", index, msper);
+        //fprintf(stderr, "\nindex %d avgtime %.1f ms\n", index, msper);
         Process_NetFps.sample(fps * 3);
         Process_NetDuration.sample(msper);
         counts[index] = 0;
@@ -114,7 +124,6 @@ bool load_network_db(char const *name) {
         std::string colon_net = ":NET";
         float *value;
         while (read_crunk_block(f, key, info, value)) {
-            fprintf(stderr, "got block: %s %s\n", key.c_str(), info.c_str());
             if (key == colon_net) {
                 //  do nothing
                 delete[] value;
@@ -265,6 +274,10 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vecto
 
 
 bool load_network(char const *name, FrameQueue *output) {
+    running_status = get_setting_int("running_status", 1);
+    gThrottleBase = get_setting_float("net_throttle_base", gThrottleBase);
+    gThrottleAdjust = get_setting_float("net_throttle_Adjust", gThrottleAdjust);
+    gSteerAdjust = get_setting_float("net_steer_adjust", gSteerAdjust);
     if (!networkInput) {
         size_t size;
         int width, height, planes;
@@ -298,7 +311,6 @@ FrameQueue *network_input_queue() {
 }
 
 void network_start() {
-    mkdir("/var/tmp/pilot/dump", 0777);
     networkPipeline->start(NULL, 3);
 }
 

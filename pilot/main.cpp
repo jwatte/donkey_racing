@@ -1,4 +1,5 @@
 #include "glesgui.h"
+#include "truetype.h"
 #include "RaspiCapture.h"
 #include "image.h"
 #include "queue.h"
@@ -34,23 +35,114 @@ static bool drawIbus = false;
 static bool drawSteer = false;
 static uint16_t ibusData[10];
 static SteerControl steerControlData;
-
-
 static bool drawMetrics = false;
 
+static int mousex = 0;
+static int mousey = 0;
+static bool displayingMenu = false;
+
+struct MenuItem {
+    float left;
+    float width;
+    float bottom;
+    float height;
+    void (*func)(MenuItem *i, int x, int y);
+    char const *text;
+};
+
+void do_quit(MenuItem *, int x, int y) {
+    fprintf(stderr, "Menu item: do_quit()\n");
+    exit(0);
+}
+
+void do_steer_scale(MenuItem *mi, int x, int y) {
+    gSteerScale = float(x) / mi->width + 0.1f;
+    fprintf(stderr, "do_steer_scale(%d, %d) -> %.2f\n", x, y, gSteerScale);
+    set_setting_float("steer_scale", gSteerScale);
+}
+
+void do_throttle_scale(MenuItem *mi, int x, int y) {
+    gThrottleScale = float(x) / mi->width + 0.1f;
+    fprintf(stderr, "do_throttle_scale(%d, %d) -> %.2f\n", x, y, gThrottleScale);
+    set_setting_float("throttle_scale", gSteerScale);
+}
+
+void do_toggle_metrics(MenuItem *mi, int x, int y) {
+    drawMetrics = !drawMetrics;
+}
+
+MenuItem gMenu[] = {
+    { 100, 600,  50, 60,           do_quit, "Quit"            },
+    { 100, 600, 150, 60,    do_steer_scale, "Steer Scale"     },
+    { 100, 600, 250, 60, do_throttle_scale, "Throttle Scale"  },
+    { 100, 600, 350, 60, do_toggle_metrics, "Toggle Metrics"  },
+    { 0 }
+};
+
+Mesh gMenuMesh;
+MeshDrawOp gMenuDraw;
+
+
 void do_click(int mx, int my, int btn, int st) {
-    fprintf(stderr, "click detected %d %d %d %d; exiting\n", 
+    fprintf(stderr, "click detected %d %d %d %d\n", 
             mx, my, btn, st);
-    if (mx > 400 && my < 100) {
-        drawMetrics = !drawMetrics;
-    } else {
-        exit(1);
+    mousex = mx;
+    mousey = my;
+    if (btn == 0 && st) {
+        if (!displayingMenu) {
+            displayingMenu = true;
+        } else {
+            for (MenuItem *m = gMenu; m->func; ++m) {
+                if (mx >= m->left && mx <= m->left + m->width && my >= m->bottom && my <= m->bottom + m->height) {
+                    m->func(m, mx - m->left, my - m->bottom);
+                    break;
+                }
+            }
+            displayingMenu = false;
+        }
     }
 }
 
 void do_move(int x, int y, unsigned int btns) {
 
 }
+
+void build_menu(Program const *p) {
+    std::vector<TTVertex> vec;
+    std::vector<unsigned short> ind;
+    int n = 0;
+    for (MenuItem *mi = gMenu; mi->func; ++mi) {
+        vec.push_back({mi->left, mi->bottom, 0, 0});
+        vec.push_back({mi->left+mi->width, mi->bottom, 1, 0});
+        vec.push_back({mi->left+mi->width, mi->bottom+mi->height, 1, 1});
+        vec.push_back({mi->left, mi->bottom+mi->height, 0, 1});
+        ind.push_back(n);
+        ind.push_back(n+1);
+        ind.push_back(n+2);
+        ind.push_back(n+2);
+        ind.push_back(n+3);
+        ind.push_back(n);
+        n += 4;
+    }
+    gg_allocate_mesh(&vec[0], sizeof(TTVertex), vec.size(), &ind[0], ind.size(), 8, 0, &gMenuMesh, 0);
+    gMenuDraw.program = p;
+    char err[200];
+    gMenuDraw.texture = gg_load_named_texture("menuitem", err, 200);
+    gMenuDraw.mesh = &gMenuMesh;
+    gMenuDraw.transform = nullptr;
+    gg_init_color(gMenuDraw.color, 1, 1, 1, 1);
+    gMenuDraw.primitive = PK_Triangles;
+}
+
+static void draw_menu() {
+    if (displayingMenu) {
+        gg_draw_mesh(&gMenuDraw);
+        for (MenuItem *mi = gMenu; mi->func; ++mi) {
+            gg_draw_text(mi->left+50, mi->bottom+10, 1.25f, mi->text, color::black);
+        }
+    }
+}
+
 
 static size_t framesDrawn;
 static uint64_t framesStart;
@@ -59,12 +151,9 @@ static double meanFps = 15.0f;
 static double fastFps = 15.0f;
 
 void do_draw() {
+    char fpsText[20] = { 0 };
     uint64_t now = metric::Collector::clock();
     gg_draw_mesh(&drawMeshY);
-    char fpsText[20];
-    fastFps = fastFps * 0.9 + 1e6 / (now - lastLoop) * 0.1;
-    sprintf(fpsText, "%4.1f %4.1f", meanFps, fastFps);
-    gg_draw_text(3, 3, 0.75f, fpsText, color::textred);
 
     if (drawMetrics && drawFlags) {
         int y = 2;
@@ -108,6 +197,7 @@ void do_draw() {
         }
     }
 
+    ++framesDrawn;
     if ((framesDrawn == 64) || (now - framesStart > 1000000)) {
         double newFps = framesDrawn * 1e6 / (now - framesStart);
         Graphics_Fps.sample(newFps);
@@ -115,7 +205,12 @@ void do_draw() {
         framesStart = now;
         meanFps = meanFps * 0.8 + newFps * 0.2;
     }
-    ++framesDrawn;
+
+    draw_menu();
+
+    fastFps = fastFps * 0.9 + 1e6 / (now - lastLoop) * 0.1;
+    sprintf(fpsText, "%4.1f %4.1f", meanFps, fastFps);
+    gg_draw_text(3, 3, 0.75f, fpsText, color::textred);
     lastLoop = now;
 }
 
@@ -247,6 +342,7 @@ bool build_gui() {
     drawMeshY.mesh = &netMeshY;
     drawMeshY.transform = gg_gui_transform();
     gg_init_color(drawMeshY.color, 0, 1, 1, 1);
+    build_menu(drawMeshY.program);
     return true;
 }
 
@@ -365,6 +461,18 @@ int main(int argc, char const *argv[]) {
             return -1;
         }
         return 0;
+    }
+    for (int i = 1; argv[i]; ++i) {
+        char const *s = argv[i];
+        if (s[0] == '-' && s[1] == '-') {
+            s += 2;
+            char const *p = strchr(s, '=');
+            if (p) {
+                std::string key(s, p);
+                std::string value(p+1);
+                set_setting(key.c_str(), value.c_str());
+            }
+        }
     }
     if (argc != 2 || strcmp(argv[1], "--test")) {
         gg_onmousebutton(do_click);

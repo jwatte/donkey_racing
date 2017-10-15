@@ -22,6 +22,7 @@ void gg_run(void (*idlefn)());
 void gg_set_quit_flag();
 
 struct Program {
+    /* uniforms locations */
     unsigned int vshader;
     unsigned int fshader;
     unsigned int program;
@@ -46,6 +47,7 @@ void gg_clear_named_programs();
 
 struct Texture {
     unsigned int texture;
+    unsigned int dbl_texture;
     unsigned int miplevels;
     unsigned int width;
     unsigned int height;
@@ -74,9 +76,11 @@ void gg_clear_named_textures();
 
 struct Mesh {
     unsigned int vertexbuf;
+    unsigned int dbl_vertexbuf;
     unsigned int vertexsize;
     unsigned int numvertices;
     unsigned int indexbuf;
+    unsigned int dbl_indexbuf;
     unsigned int numindices;
     unsigned char desc_tex;
     unsigned char desc_color;
@@ -89,7 +93,7 @@ struct Mesh {
 #define MESH_FLAG_MAX 0x4
 
 void gg_allocate_mesh(void const *mdata, unsigned int vertexbytes, unsigned int numvertices, unsigned short const *indices, unsigned int numindices, unsigned int tex_offset, unsigned int color_offset, Mesh *oMesh, unsigned int flags);
-void gg_update_mesh(Mesh *mesh, void const *mdata, unsigned int fromvertex, unsigned int numvertices, unsigned short const *indices, unsigned int fromindex, unsigned int numindices);
+void gg_set_mesh(Mesh *mesh, void const *mdata, unsigned int numvertices, unsigned short const *indices, unsigned int numindices);
 void gg_clear_mesh(Mesh *mesh);
 Mesh const *gg_load_named_mesh(char const *name, char *error, size_t esize);
 void gg_clear_named_meshes();

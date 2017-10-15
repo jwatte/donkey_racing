@@ -1,6 +1,7 @@
 #include "serial.h"
 #include "metrics.h"
 #include "crc.h"
+#include "settings.h"
 #include "../teensy_rc_control/Packets.h"
 
 #include <unistd.h>
@@ -15,6 +16,12 @@
 #include <linux/hidraw.h>
 
 
+float gSteerScale = 1.0f;
+float gThrottleScale = 0.4f;
+float gThrottleMin = 0.05f;
+float gSteer = 0.0f;
+float gThrottle = 0.0f;
+
 static int hidport = -1;
 static pthread_t hidthread;
 static bool hidRunning;
@@ -23,7 +30,7 @@ static uint8_t my_frame_id = 0;
 static uint8_t peer_frameid = 0;
 
 /* microseconds */
-#define HID_SEND_INTERVAL 16384
+#define HID_SEND_INTERVAL 11111
 
 static char const *charstr(int i, char *str) {
     if (i >= 32 && i < 127) {
@@ -36,6 +43,17 @@ static char const *charstr(int i, char *str) {
     return str;
 }
 
+
+static float clamp(float val, float from, float to) {
+    if (val < from) return from;
+    if (val > to) return to;
+    return val;
+}
+
+void serial_steer(float steer, float throttle) {
+    gSteer = clamp(steer * gSteerScale, -1.0f, 1.0f);
+    gThrottle = clamp(throttle * gThrottleScale, gThrottleMin, 1.0f);
+}
 
 static void hexdump(void const *vp, int end) {
     unsigned char const *p = (unsigned char const *)vp;
@@ -312,6 +330,7 @@ static int verify_open(char const *name) {
 
 bad_fd:
     if (fd >= 0) {
+        fprintf(stderr, "device %s is not the HID I want\n", name);
         close(fd);
     }
     return -1;
@@ -324,6 +343,9 @@ bool start_serial(char const *port, int speed) {
     if (hidport != -1) {
         return false;
     }
+    gSteerScale = get_setting_float("steer_scale", gSteerScale);
+    gThrottleScale = get_setting_float("throttle_scale", gThrottleScale);
+    gThrottleMin = get_setting_float("throttle_min", gThrottleMin);
 
     hidport = verify_open(port);
     if (hidport < 0) {
