@@ -41,6 +41,8 @@ extern "C" {
 #include "../stb/stb_image_write.h"
 
 
+#define MIN_CLUSTER_SIZE 18
+
 bool verbose = false;
 bool progress = isatty(2);
 bool devmode = false;
@@ -133,6 +135,12 @@ int fc_w = 0;
 int fc_h = 0;
 unsigned char *fc_ptr = nullptr;
 
+static inline unsigned char clamp_255(float f) {
+    if (f > 255) return 255;
+    if (f < 0) return 0;
+    return (unsigned char)f;
+}
+
 void mkfalse(unsigned char *d, unsigned char ix) {
     if (ix == 0) {
         d[0] = d[1] = d[2] = 0;
@@ -150,6 +158,10 @@ void mkfalse(unsigned char *d, unsigned char ix) {
         d[0] = 255; d[1] = 255; d[2] = 0;
         return;
     }
+    if (ix == 252) {
+        d[0] = 0; d[1] = 255; d[2] = 255;
+        return;
+    }
     float s1 = sinf(ix);
     float s2 = sinf(ix + 2.1f);
     float s3 = sinf(ix - 2.1f);
@@ -162,7 +174,8 @@ void mkfalse(unsigned char *d, unsigned char ix) {
     d[2] = (b > 1.0f) ? 255 : (b < 0.0f) ? 0 : (unsigned char)b;
 }
 
-void write_false_color(char const *name, int width, int height, unsigned char const *frame) {
+void write_false_color(char const *name, int width, int height, unsigned char const *frame)
+{
     if (fc_w != width || fc_h != height || !fc_ptr) {
         if (fc_ptr) {
             free(fc_ptr);
@@ -180,6 +193,29 @@ void write_false_color(char const *name, int width, int height, unsigned char co
     stbi_write_png(name, width, height, 3, fc_ptr, 0);
 }
 
+void mk_false_overlay(unsigned char gray, unsigned char blob, unsigned char *output)
+{
+    mkfalse(output, blob);
+    output[0] = clamp_255(output[0] * 0.25 + gray);
+    output[1] = clamp_255(output[1] * 0.25 + gray);
+    output[2] = clamp_255(output[2] * 0.25 + gray);
+}
+
+void overlay_false_color(
+    unsigned char const *gray,
+    unsigned char const *blobs,
+    unsigned char *output,
+    int width,
+    int height)
+{
+    for (int i = 0, n = width * height; i != n; ++i)
+    {
+        mk_false_overlay(gray[0], blobs[0], output);
+        gray += 1;
+        blobs += 1;
+        output += 3;
+    }
+}
 
 void check_header(FILE *f, char const *name) {
     file_header fh;
@@ -211,9 +247,11 @@ char const *get_filename(FILE *f) {
 
 
 int stretchData = 7;
-float stretchRotate = 0.04f;
-float stretchOffset = 5.0f;
+float stretchRotate = 0.06f;
+float stretchOffset = 9.0f;
 float testFraction = 0.1f;
+float stretchNoise = 10;
+float stretchBias = 20;
 unsigned char *outputframe;
 int outputwidth;
 int outputheight;
@@ -549,11 +587,11 @@ void render_vote(unsigned char *fb, int width, int height,
     cy += height/2;
     float s = sin(dir);
     float c = cos(dir);
-    int n = power * 20;
-    if (n < 5) {
-        n = 5;
-    } else if (n > 40) {
-        n = 40;
+    int n = power * 10;
+    if (n < 4) {
+        n = 4;
+    } else if (n > 50) {
+        n = 50;
     }
     while (n-- > 0) {
         int x = (int)floor(cx);
@@ -628,8 +666,10 @@ bool eigenvectors(double const *rm22, double *ov2a, double *ov2b, double *aev, d
     return true;
 }
 
+bool should_write_vote = false;
+
 double calc_cluster_dir(
-    unsigned char const *image, int imwidth, int ix,
+    unsigned char *image, int imwidth, int ix,
     double xmin, double xmax, double ymin, double ymax,
     double xavg, double yavg, int counts, double xs2, double ys2, double xys,
     double ahead, double *strength)
@@ -648,7 +688,7 @@ double calc_cluster_dir(
     if (fabs(ev1) > fabs(ev0)) {    //  longest vector
         vec0[0] = vec1[0];
         vec0[1] = vec1[1];
-        ev0 = ev1;
+        std::swap(ev0, ev1);
     }
     if (vec0[1] > 0) {  //  pointing down?
         //  flip it to point ahead
@@ -656,7 +696,189 @@ double calc_cluster_dir(
         vec0[1] = -vec0[1];
     }
     //  flip x/y to make atan2 return "0 = north, positive = east" values
-    return atan2(vec0[0], -vec0[1]);
+    double ret = atan2(vec0[0], -vec0[1]);
+    double newret = ret;
+    //  adjust the detection for known failure cases
+    if ((ymax < -0.3 * outputheight)                   //  upper 20% of the picture
+            && (ymax - ymin < 6)                        //  not too tall
+            && (xmax - xmin < (ymax - ymin) * 3)        //  not a thick horizontal line
+            && (fabs(ret - ahead) > 1.2)                        //  steer sideways
+            && fabs(ret) > 0.8
+            && (counts > ((xmax-xmin)+(ymax-ymin))*2-8) //  mostly filled area
+            && ((xmax+xmin)*0.5 < outputwidth*0.4)      //  omit the edges
+    ) {
+        newret = (ret < 0) ? ret + M_PI * 0.5 : ret - M_PI * 0.5;
+        goto adjust_ret;
+    }
+    else if (fabs((xmax - xmin) / (ymax - ymin)) < fabs(ret*1.20)   //  tall, but turns sharply
+            && xmax - xmin < 15                         //  not too wide
+            && ymax - ymin < 15                         //  not too tall
+            && fabs(ret - ahead) > 1.2                            //  turns sharply
+            && fabs(ret) > 0.8
+            && (counts > ((xmax-xmin)+(ymax-ymin))*2-8) //  mostly filled area
+            && ((xmax+xmin)*0.5 < outputwidth*0.4)      //  omit the edges
+    ) {
+        newret = (ahead * 0.6 + ret * 0.4); // (ret < 0) ? ret + (M_PI / 2) : ret - (M_PI / 2);
+adjust_ret:
+        if (verbose) {
+            fprintf(stderr, "\nxwidth=%f yheight=%f direction=%.2f turns into %.2f\n",
+                xmax-xmin, ymax-ymin, ret, newret);
+        }
+        int ymini = (int)floor(ymin + outputheight/2);
+        int ymaxi = (int)floor(ymax + outputheight/2);
+        int xmini = (int)floor(xmin + outputwidth/2);
+        int xmaxi = (int)floor(xmax + outputwidth/2);
+        for (int x = xmini; x <= xmaxi; ++x) {
+            image[x + ymini*imwidth] = 252;
+            image[x + ymaxi*imwidth] = 252;
+        }
+        for (int y = ymini; y <= ymaxi; ++y) {
+            image[xmini + y*imwidth] = 252;
+            image[xmaxi + y*imwidth] = 252;
+        }
+        render_vote(image, imwidth, outputheight, xavg, yavg, ret, 1, 252);
+        should_write_vote = true;
+        ret = newret;
+    }
+    //  if both are about the same size, make the strength smaller; if very elongated, make it stronger
+    *strength *= fabs(ev0/ev1) - 1;
+    return ret;
+}
+
+void render_car_splat(unsigned char *img, int width, int height, double xd, double yd) {
+    int y = (int)yd;
+    int x = (int)xd;
+    for (int xx = x - 5, n = x + 5; xx <= n; ++xx) {
+        if (xx >= 0 && xx < width) {
+            img[xx + y*width] = 255;
+        }
+    }
+    for (int yy = y - 5, n = y + 5; yy <= n; ++yy) {
+        if (yy >= 0 && yy < height) {
+            img[x + yy*width] = 255;
+        }
+    }
+}
+
+bool check_thresh_vert(unsigned char const *img, unsigned char thresh, int width, int x, int y, int h)
+{
+    img += width * y + x;
+    int nvote = 0;
+    int oh = h;
+    while (h > 0) {
+        if (*img <= thresh) {
+            ++nvote;
+        }
+        img += width;
+        --h;
+    }
+    return nvote >= floor(oh * 0.8 + 1);
+}
+
+bool check_thresh_hor(unsigned char const *img, unsigned char thresh, int width, int x, int w, int y)
+{
+    img += width * y + x;
+    int nvote = 0;
+    int ow = w;
+    while (w > 0) {
+        if (*img <= thresh) {
+            ++nvote;
+        }
+        img += 1;
+        --w;
+    }
+    return nvote >= floor(ow * 0.8 + 1);
+}
+
+void detect_cars(unsigned char const *img, unsigned char *annotate, unsigned char thresh, int width, int height, double *oprob, double *osteer)
+{
+    double carx[20] = { 0.0 };
+    double cary[20] = { 0.0 };
+    int ncar = 0;
+    double prob = 0.0;
+    int maxwidth = width / 6;
+    int maxheight = height / 4;
+    
+    for (int y = height * 0.1, ymax = height * 0.9, yadd = height * 0.075;
+            y < ymax; y += yadd) {
+        for (int xsplit = (float(y) / height + 0.35f) * width / 2, x = width / 2 - xsplit, xmax = width / 2 + xsplit, xadd = width * 0.05;
+                x < xmax; x += xadd) {
+            if (x < xadd) {
+                continue;
+            }
+            if (x > width-xadd) {
+                continue;
+            }
+            if (img[x + y*width] <= thresh) {
+                bool going = true;
+                int xleft = x;
+                int ytop = y;
+                int xwidth = 1;
+                int yheight = 1;
+                while (going) {
+                    going = false;
+                    if (xleft + xwidth < width && xwidth < maxwidth && check_thresh_vert(img, thresh + 16, width, xleft+xwidth, ytop, yheight)) {
+                        xwidth += 1;
+                        going = true;
+                    }
+                    if (ytop + yheight < height && yheight < maxheight && check_thresh_hor(img, thresh + 16, width, xleft, xwidth, ytop+yheight)) {
+                        yheight += 1;
+                        going = true;
+                    }
+                    if (xleft > 0 && xwidth < maxwidth && check_thresh_vert(img, thresh + 16, width, xleft-1, ytop, yheight)) {
+                        xleft -= 1;
+                        xwidth += 1;
+                        going = true;
+                    }
+                    if (ytop > 0 && yheight < maxheight && check_thresh_hor(img, thresh + 16, width, xleft, xwidth, ytop-1)) {
+                        ytop -= 1;
+                        yheight += 1;
+                        going = true;
+                    }
+                }
+                if (xwidth > width * 0.1 && yheight > height * 0.1) {
+                    double pa = sqrt(double(xwidth) / width * double(yheight) / height);
+                    prob += pa;
+                    if (ncar < 20) {
+                        carx[ncar] = xleft + xwidth * 0.5;
+                        cary[ncar] = ytop + yheight * 0.5;
+                        ++ncar;
+                    }
+                }
+            }
+        }
+    }
+    if (ncar) {
+        prob += 0.2;
+        int numleft = 0;
+        int numright = 0;
+        double powleft = 0;
+        double powright = 0;
+        for (int i = 0; i != ncar; ++i) {
+            if (carx[i] < width/2) {
+                ++numright;
+                powright += 30.0 / (width/2 + 30 - carx[i]) * (cary[i] + 30) / (height + 100);
+            } else {
+                ++numleft;
+                powleft += 30.0 / (carx[i] - width/2 + 30) * (cary[i] + 30) / (height + 100);
+            }
+        }
+        if (numleft > numright || (numleft == numright && powleft > powright)) {
+            *osteer = -powleft / numleft;
+        } else {
+            *osteer = powright / numright;
+        }
+        *oprob = prob > 1 ? 1 : prob;
+        for (int i = 0; i < ncar; ++i) {
+            render_car_splat(annotate, width, height, carx[i], cary[i]);
+        }
+        if (prob > 0.5) {
+            if (verbose) {
+                fprintf(stderr, "detect car thresh=%d: left=%d right=%d powleft=%.1f powright=%.1f steer=%.2f prob=%.2f\n", 
+                   thresh, numleft, numright, powleft, powright, *osteer, *oprob);
+            }
+        }
+    }
 }
 
 unsigned char *cl_temp;
@@ -804,7 +1026,7 @@ void compute_labels_cv(
     double xavg[256] = { 0.0 };
     double yavg[256] = { 0.0 };
     //  what constitutes a "big enough" cluster?
-    int const cnt_thresh = 12;
+    int const cnt_thresh = MIN_CLUSTER_SIZE;
     for (int i = 0; i != 256; ++i) {
         xavg[i] = (counts[i] >= cnt_thresh) ? xs[i] / counts[i] : 0.0;
         yavg[i] = (counts[i] >= cnt_thresh) ? ys[i] / counts[i] : 0.0;
@@ -829,10 +1051,9 @@ void compute_labels_cv(
     double votecount = 0.0;
     for (int i = 0; i != 256; ++i) {
         //  vote for whether to turn left/right
-#if 1
         if (counts[i]) {
-            double straight = atan2(-xavg[i], yavg[i] + 58.0);  //  where is the horizon?
-            double strength = counts[i] / (30.0 + yavg[i] + oph/2); //  magic constant!
+            double straight = atan2(-xavg[i], yavg[i] + 54.0);  //  where is the horizon?
+            double strength = (10 + sqrt(counts[i])) / (10.0 + yavg[i] + oph/2); //  magic constant!
             double clusterdir = calc_cluster_dir(
                     cl_temp, opw, i,
                     xmin[i], xmax[i], ymin[i], ymax[i],
@@ -846,74 +1067,26 @@ void compute_labels_cv(
             votes += (clusterdir - straight) * strength;
             votecount += strength;
             render_vote(cl_temp, opw, oph, 
-                    xavg[i], yavg[i], straight, 2, 254);
+                    xavg[i], yavg[i], straight, strength, 254);
             render_vote(cl_temp, opw, oph, 
-                    xavg[i], yavg[i], clusterdir, 2, 253);
+                    xavg[i], yavg[i], clusterdir, strength, 253);
             render_vote(cl_temp, opw, oph, 
-                    xavg[i], yavg[i], (clusterdir-straight), 2, 255);
+                    xavg[i], yavg[i], (clusterdir-straight), strength, 255);
         }
-#else
-        if (counts[i]) {
-            // lr_a[i] = (ys[i] * xs2[i] - xs[i] * xys[i]) /
-            //     (counts[i] * xs2[i] - xs[i] * xs[i]);
-            double denominator = (counts[i] * xs2[i] - xs[i] * xs[i]);
-            if (fabs(denominator) < 1e-5) {
-                lr_b[i] = 1e10;
-            } else {
-                lr_b[i] = (counts[i] * xys[i] - xs[i] * ys[i]) / denominator;
-            }
-            double direction = lr_b[i];
-            if (std::isnan(direction)) {
-                fprintf(stderr, "direction NaN: %.1f i=%d, counts[i]=%d\n",
-                        direction, i, counts[i]);
-            }
-            //  TODO: magic constant
-            double power = counts[i] / (yavg[i] + oph/2 + 50.0);
-            double vote = 0.0;
-            double straight = atan2(-xavg[i], yavg[i]+58);  //  where is the horizon?
-            render_vote(cl_temp, outputwidth, outputheight, 
-                    xavg[i], yavg[i], straight, 2, 254);
-            if (fabs(direction) < 0.5) {
-                if ((ymax[i] - ymin[i]) > (xmax[i] - xmin[i])) {
-                    if (fabs(direction) < 0.01) {
-                        direction = 0;
-                    } else {
-                        direction = 1.0 / direction;
-                    }
-                }
-                else if (fabs(direction) < 0.1) {
-                    //  horizontalish clumps steer right
-                    direction = 1;
-                    power *= 0.1;
-                }
-            }
-            if (fabs(direction) > 1e2) {
-                //  Too vertical to be numerically reliable, but we 
-                //  know that vertical on the left means turn left, 
-                //  and vice versa.
-                votes += xavg[i] / (opw/2) * power;
-                votecount += power;
-                vote = 0;
-            } else {
-                direction = -atan(1.0 / direction);
-                double steer = (direction - straight);
-                render_vote(cl_temp, outputwidth, outputheight, 
-                        xavg[i], yavg[i], steer, power, 253);
-                if (steer < -1.0) steer = -1.0; else if (steer > 1.0) steer = 1.0;
-                votes += steer * power;
-                vote = steer;
-                votecount += power;
-            }
-            if (std::isnan(votes) || std::isnan(votecount)) {
-                fprintf(stderr,
-                        "NaN in votes %.1f / votecount %.1f at iteration %d in serial %d\n",
-                        votes, votecount, i, serial);
-            } else {
-                render_vote(cl_temp, outputwidth, outputheight, 
-                        xavg[i], yavg[i], vote, power, 255);
-            }
-        }
-#endif
+    }
+
+    double carprob = 0;
+    double carvote = 0;
+    double carthresh = (avg - sdev * 3) + 8;
+    if (carthresh < 18) {
+        carthresh = 18;
+    } else if (carthresh > 56) {
+        carthresh = 56;
+    }
+    detect_cars(frame, cl_temp, clamp_255(carthresh), opw, oph, &carprob, &carvote);
+    if (carprob > 0.5) {
+        votes = carvote;
+        votecount = 1;
     }
 
     if (std::isnan(votes) || std::isnan(votecount)) {
@@ -929,13 +1102,22 @@ dump_stuff:
         sprintf(name, "png_test/no_cluster_%d_input.png", serial);
         stbi_write_png(name, opw, oph, 1, frame, 0);
     }
-    label[0] = (votecount > 0.01) ? ((votes / votecount) * 0.5) : 0.25;
+    label[0] = (votecount > 0.01) ? (votes / votecount) : 0.25;
     if (fabs(label[0]) > 1.25) {
         label[0] = (label[0] < 0) ? -1.25 : 1.25;
     }
     label[1] = 0.4 / (fabs(label[0]) + 0.3);
     if (label[1] > 1.0) {
         label[1] = 1.0;
+    }
+    if (should_write_vote) {
+        should_write_vote = false;
+        if (dumppng) {
+            char name[200];
+            mkdir("png_test", 0777);
+            sprintf(name, "png_test/%06d_fixuup_%.2f_%.2f.png", serial, label[0], label[1]);
+            write_false_color(name, opw, oph, cl_temp);
+        }
     }
     if (std::isnan(label[0]) || std::isnan(label[1])) {
         fprintf(stderr, "NaN in compute_labels_cv()!\n");
@@ -1012,19 +1194,45 @@ void database_frame(
                     write_false_color(name, outputwidth, outputheight, (unsigned char const *)cl_temp);
                 }
             }
+            if (!(serial & 3)) {
+                mkdir ("movie", 0777);
+                char name[100];
+                sprintf(name, "movie/%06d_%.2f_%.2f.png", serial, label[0], label[1]);
+                static unsigned char *overlay_temp = nullptr;
+                if (!overlay_temp) {
+                    overlay_temp = new unsigned char [outputwidth * outputheight * 3];
+                }
+                overlay_false_color(outputframe, cl_temp, overlay_temp, outputwidth, outputheight);
+                stbi_write_png(name, outputwidth, outputheight, 3, overlay_temp, 0);
+            }
         }
         for (int i = 0; i != stretchData; ++i) {
             float mxl[6], tmp[6];
             m2_translation(-320, -240, mxl);
-            m2_rotation(stretch_random() * 2 * stretchRotate - stretchRotate, tmp);
+            float rot = stretch_random() * 2 * stretchRotate - stretchRotate;
+            m2_rotation(rot, tmp);
             m2_mul(tmp, mxl, mat);
             float offsetx = stretch_random() * 2 * stretchOffset - stretchOffset;
             float offsety = stretch_random() * 2 * stretchOffset - stretchOffset;
             mat[2] += offsetx + 320;
             mat[5] += offsety + 240;
             unwarp_transformed_bytes(y, u, v, mat, outputframe);
+            float maxnoise = stretch_random() * stretchNoise;
+            float bias = stretch_random() * stretchBias * 2 - stretchBias;
+            for (unsigned int q = 0, n = outputsize; q != n; ++q) {
+                outputframe[q] = clamp_255((float)outputframe[q] + stretch_random() * maxnoise * 2 - maxnoise + bias);
+            }
             put_to_database(outputframe, label);
             ++numWritten;
+            if (devmode || dumppng) {
+                if (!(serial & 1023)) {
+                    char name[200];
+                    sprintf(name, "png_test/%06d_sub_%d_rot_%.3f_ox_%.1f_oy_%.1f_%.2f_%.2f.png",
+                        serial, i, rot, offsetx, offsety, label[0], label[1]);
+                    stbi_write_png(name, outputwidth, outputheight, 1,
+                            (unsigned char const *)outputframe, 0);
+                }
+            }
         }
     } else {
         numSkipped += 1;
