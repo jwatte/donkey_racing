@@ -16,6 +16,7 @@ from caffe2.proto import caffe2_pb2
 BATCH_SIZE=32
 LEARN_RATE=-0.01
 train_iters=1000000
+#train_iters=50000
 iter_val=0
 
 #root_folder = "/home/jwatte/trainingdata/donkey_racing/network"
@@ -51,6 +52,23 @@ def AddNetModel_2(model, data):
     output = brew.fc(model, relu5, 'output', dim_in=16, dim_out=2)
     return output
 
+def AddNetModel_3(model, data):
+    # 182x70x1 -> 90x34x3
+    conv1 = brew.conv(model, data, 'conv1', dim_in=1, dim_out=6, kernel=3)
+    pool1 = brew.max_pool(model, conv1, 'pool1', kernel=2, stride=2)
+    # 90x34x3 -> 44x16x5
+    conv2 = brew.conv(model, pool1, 'conv2', dim_in=6, dim_out=8, kernel=3)
+    pool2 = brew.max_pool(model, conv2, 'pool2', kernel=2, stride=2)
+    # 44x16x5 -> 21x7x7
+    conv3 = brew.conv(model, pool2, 'conv3', dim_in=8, dim_out=10, kernel=3)
+    pool3 = brew.max_pool(model, conv3, 'pool3', kernel=2, stride=2)
+    relu4 = brew.relu(model, pool3, 'relu4')
+    # 21x7x7 -> 2
+    fc5 = brew.fc(model, relu4, 'fc5', dim_in=21*7*10, dim_out=32)
+    relu5 = brew.relu(model, fc5, 'relu5')
+    output = brew.fc(model, relu5, 'output', dim_in=32, dim_out=2)
+    return output
+
 def AddNetModel_5(model, data):
     # 0 params, dims [1, 70, 182]
     input1 = data
@@ -84,21 +102,21 @@ def AddNetModel_5(model, data):
 
 
 def AddNetModel(model, data):
-    return AddNetModel_5(model, data)
+    return AddNetModel_3(model, data)
 
 def AddTrainingOperators(model, output, label):
     loss = model.SquaredL2Distance([output, label], "loss")
     avgloss = model.AveragedLoss([loss], "avgloss")
     model.AddGradientOperators([avgloss])
     ITER = brew.iter(model, "iter")
-    stepsize = int(train_iters / 10000)
+    stepsize = int(train_iters / 2000)
+    if (stepsize > 30):
+        stepsize = int(30 + (stepsize - 30) / 5)
     if stepsize < 1:
         stepsize = 1
-    if stepsize > 100:
-        stepsize = 100
     assert(LEARN_RATE < 0)
     LR = model.LearningRate(
-        ITER, "LR", base_lr=LEARN_RATE, policy="step", stepsize=stepsize, gamma=0.99997 )
+        ITER, "LR", base_lr=LEARN_RATE, policy="step", stepsize=stepsize, gamma=0.9995)
     ONE = model.param_init_net.ConstantFill([], "ONE", shape=[1], value=1.0)
     for param in model.params:
         param_grad = model.param_to_grad[param]

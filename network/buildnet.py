@@ -20,7 +20,7 @@ training = True
 
 load_checkpoint=None
 load_trained=None
-load_trained="load_trained_5.crunk"
+load_trained="load_trained_3.crunk"
 
 if len(sys.argv) > 1:
     try:
@@ -107,11 +107,15 @@ def add_noise():
             b = np.multiply(b, 0.5)
             b = np.add(b, rand)
             workspace.FeedBlob(p, b, device_opts)
+            print("Added noise to " + p)
+            sys.stderr.write("Added noise to " + p + "\n")
+            
 
 def init_random():
     for p in deploy.params:
         p = str(p)
         if is_param_name(p):
+            b = workspace.FetchBlob(p)
             rand = np.random.rand(*b.shape).astype(np.float32)
             rand = np.add(rand, -0.5)
             workspace.FeedBlob(p, rand, device_opts)
@@ -121,7 +125,6 @@ if training:
         train.RunAllOnGPU()
         workspace.RunNetOnce(train.param_init_net)
         workspace.CreateNet(train.net, overwrite=False)
-        add_noise()
         if load_checkpoint:
             load = model_helper.ModelHelper(name="load_checkpoint")
             load.Load([], [], db=load_checkpoint, db_type="lmdb", load_all=1, keep_device=1, absolute_path=0)
@@ -171,19 +174,19 @@ if training:
                 if math.isnan(loss[i]) or math.isnan(steer):
                         logfile.write('\nNaN detected -- model diverges. Emergency brake.\n')
                         print('\nNaN detected -- model diverges. Emergency brake.')
-                        init_random()
-                if False and (i % 5000 == 0):
-                    for j in deploy.params:
-                        ba = workspace.FetchBlob(j)
-                        if len(ba.shape) == 4:
-                            for q in range(0, ba.shape[0]):
-                                for w in range(0, ba.shape[1]):
-                                    scipy.misc.imsave('param_%d_%s_%d_%d.jpg' % (i, j, q, w), ba[q][w])
-                        if len(ba.shape) == 3:
-                            for q in range(0, ba.shape[0]):
-                                scipy.misc.imsave('param_%d_%s_%d.jpg' % (i, j, q), ba[q])
-                        if len(ba.shape) == 2:
-                            scipy.misc.imsave('param_%d_%s.jpg' % (i, j), ba)
+                        os.exit(4)
+                # if (i % 5000 == 0):
+                #     for j in deploy.params:
+                #         ba = workspace.FetchBlob(j)
+                #         if len(ba.shape) == 4:
+                #             for q in range(0, ba.shape[0]):
+                #                 for w in range(0, ba.shape[1]):
+                #                     scipy.misc.imsave('param_%d_%s_%d_%d.jpg' % (i, j, q, w), ba[q][w])
+                #         if len(ba.shape) == 3:
+                #             for q in range(0, ba.shape[0]):
+                #                 scipy.misc.imsave('param_%d_%s_%d.jpg' % (i, j, q), ba[q])
+                #         if len(ba.shape) == 2:
+                #             scipy.misc.imsave('param_%d_%s.jpg' % (i, j), ba)
                 start = stop
             i = i + 1
         logfile.write('\nFinished at %d iterations.\n' % (train_iters,))
