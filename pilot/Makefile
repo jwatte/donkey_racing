@@ -70,11 +70,11 @@ $(foreach TOOL,$(TOOLS),$(eval $(call build_tool,$(TOOL))))
 clean:
 	rm -rf obj $(TOOLS) pilot
 
-obj/%.o:	%.c
+obj/%.o:	%.c Makefile
 	@mkdir -p obj
 	gcc -g -c -o $@ $< -MMD $(CFLAGS) -std=gnu11
 
-obj/%.o:	%.cpp
+obj/%.o:	%.cpp Makefile
 	@mkdir -p obj
 	g++ -g -c -o $@ $< -MMD $(CPPFLAGS)
 

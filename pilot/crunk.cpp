@@ -38,7 +38,6 @@ bool read_crunk_block(FILE *f, std::string &okey, std::string &oinfo, float *&ov
         return false;
     }
     line[1024] = 0;
-    oinfo = line;
     int sz = 0;
     if (sscanf(line, " %d", &sz) < 1) {
         fprintf(stderr, "read_crunk_block(): blob size not found\n");

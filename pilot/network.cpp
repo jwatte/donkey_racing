@@ -3,8 +3,13 @@
 #include "image.h"  //  for warp size
 #include "pipeline.h"
 #include "crunk.h"
+#include "metrics.h"
+#include "../stb/stb_image_write.h"
 #include <assert.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
 
 #include <caffe2/core/db.h>
 #include <caffe2/core/operator.h>
@@ -17,25 +22,77 @@
 #include <caffe2/operators/relu_op.h>
 
 
+#define NETWORK_VARIANT 3
+
 static FrameQueue *networkInput;
 static Pipeline *networkPipeline;
 bool gNetworkFailed;
 
 using namespace caffe2;
 
-Workspace gWorkspace[3];
+static Workspace gWorkspace[3];
+static Blob *inputs[3];
+static Blob *outputs[3];
+static std::vector<OperatorBase *> nets[3];
+static std::map<std::string, float *> networkBlobs;
+static std::map<std::string, std::vector<TIndex>> blobShapes;
+static uint64_t clocks[3];
+static uint64_t starts[3];
+static int counts[3];
+static int ndump = 0;
+
 
 static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *, int index) {
+    uint64_t start = metric::Collector::clock();
     //  do the thing!
-    usleep(25000);
+    inputs[index]->GetMutable<Tensor<CPUContext>>()->ShareExternalPointer((float *)src->data_);
+    for (auto ptr : nets[index]) {
+        ptr->Run();
+    }
+    inputs[index]->GetMutable<Tensor<CPUContext>>()->FreeMemory();
+    float const *output = (float const *)outputs[index]->Get<Tensor<CPUContext>>().data<float>();
+    fprintf(stderr, "\rNet index %1d: steer %8.2f throttle %8.2f  ", index, output[0], output[1]);
+    if (index == 2 && ((++ndump & 256) == 10)) {
+        float *sdata = (float *)src->data_;
+        char buf[80];
+        sprintf(buf, "/var/tmp/pilot/dump/dump-%06d-%.2f-%.2f.png", ndump, output[0], output[1]);
+        static unsigned char cbuf[182*70*1];
+        for (int i = 0; i != 182*70*1; ++i) {
+            cbuf[i] = sdata[i] < 0 ? 0 : sdata[i] > 1 ? 255 : (unsigned char)(sdata[i] * 255);
+        }
+        stbi_write_png(buf, 182, 70, 1, cbuf, 0);
+        fprintf(stderr, "\nwrote %s\n", buf);
+    }
     if (dst) {
         //  the other queue will be responsible for this buffer
         dst->link(src);
         src = NULL;
     }
+    uint64_t end = metric::Collector::clock();
+    clocks[index] += end - start;
+    counts[index] += 1;
+    if (counts[index] == 50 || clocks[index] > 1000000) {
+        double fps = counts[index] / (starts[index] - end);
+        double msper = clocks[index] / (1000.0 * counts[index]);
+        fprintf(stderr, "\nindex %d avgtime %.1f ms\n", index, msper);
+        Process_NetFps.sample(fps * 3);
+        Process_NetDuration.sample(msper);
+        counts[index] = 0;
+        clocks[index] = 0;
+        starts[index] = end;
+    }
+    Process_NetBuffers.increment();
 }
 
-std::map<std::string, float *> networkBlobs;
+bool parse_shape(std::string const &info, std::vector<TIndex> &shape) {
+    int s[4] = { 0 };
+    int n = sscanf(info.c_str(), "( %d , %d , %d , %d", &s[0], &s[1], &s[2], &s[3]);
+    if (n < 1) {
+        return false;
+    }
+    shape.insert(shape.begin(), &s[0], &s[n]);
+    return true;
+}
 
 bool load_network_db(char const *name) {
     char line[1024];
@@ -57,12 +114,18 @@ bool load_network_db(char const *name) {
         std::string colon_net = ":NET";
         float *value;
         while (read_crunk_block(f, key, info, value)) {
-            fprintf(stderr, "got block: %s\n", key.c_str());
+            fprintf(stderr, "got block: %s %s\n", key.c_str(), info.c_str());
             if (key == colon_net) {
                 //  do nothing
                 delete[] value;
             } else {
-                networkBlobs[key] = value;
+                if (!parse_shape(info, blobShapes[key])) {
+                    fprintf(stderr, "Shape %s could not be parsed\n", info.c_str());
+                    delete[] value;
+                    return false;
+                } else {
+                    networkBlobs[key] = value;
+                }
             }
         }
     } catch (std::exception const &x) {
@@ -129,49 +192,46 @@ OperatorBase *mkfc(Workspace *wks, char const *name, char const *input,
     return CreateOperator(def, wks).release();
 }
 
-bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output) {
+bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vector<OperatorBase *> &net) {
     for (auto const kv : networkBlobs) {
         Blob *bb = wks->CreateBlob(kv.first);
-        bb->ShareExternal<float>((float *)kv.second);
+        Tensor<CPUContext> *t = new Tensor<CPUContext>(blobShapes[kv.first]);
+        t->ShareExternalPointer((float *)kv.second);
+        bb->Reset(t);
     }
+
+    vector<TIndex> sz;
+
     input = wks->CreateBlob("input");
-    input->Reset((float *)new float[2*59*249]);
+    sz.push_back(1);
+    sz.push_back(1);
+    sz.push_back(70);
+    sz.push_back(182);
+    Tensor<CPUContext> *it = new Tensor<CPUContext>(sz);
+    input->Reset(it);
+
     output = wks->CreateBlob("output");
-    output->Reset((float *)new float[2]);
+    sz.clear();
+    sz.push_back(1);
+    sz.push_back(2);
+    Tensor<CPUContext> *ot = new Tensor<CPUContext>(sz);
+    output->Reset(ot);
 
 #define CONV(n, i, k, s, di, dd) \
-    mkconv(wks, n, i, k, s, di, dd)
+    net.push_back(mkconv(wks, n, i, k, s, di, dd))
 #define POOL(n, i, k, s, d) \
-    mkpool(wks, n, i, k, s, d)
+    net.push_back(mkpool(wks, n, i, k, s, d))
 #define RELU(n, i, d) \
-    mkrelu(wks, n, i, d)
+    net.push_back(mkrelu(wks, n, i, d))
 #define FC(n, i, di, dd) \
-    mkfc(wks, n, i, di, dd)
+    net.push_back(mkfc(wks, n, i, di, dd))
 
-#if 0
+    bool ret = false;
 
-    /*
-    // This is a LeNet-like model
-    //
-    def AddNetModel_2(model, data):
-        # 182x70x1 -> 90x34x3
-        conv1 = brew.conv(model, data, 'conv1', dim_in=1, dim_out=3, kernel=3)
-        pool1 = brew.max_pool(model, conv1, 'pool1', kernel=2, stride=2)
-        # 90x34x3 -> 44x16x5
-        conv2 = brew.conv(model, pool1, 'conv2', dim_in=3, dim_out=5, kernel=3)
-        pool2 = brew.max_pool(model, conv2, 'pool2', kernel=2, stride=2)
-        # 44x16x5 -> 21x7x7
-        conv3 = brew.conv(model, pool2, 'conv3', dim_in=5, dim_out=7, kernel=3)
-        pool3 = brew.max_pool(model, conv3, 'pool3', kernel=2, stride=2)
-        relu4 = brew.relu(model, pool3, 'relu4')
-        # 21x7x7 -> 2
-        fc5 = brew.fc(model, relu4, 'fc5', dim_in=21*7*7, dim_out=16)
-        relu5 = brew.relu(model, fc5, 'relu5')
-        output = brew.fc(model, relu5, 'output', dim_in=16, dim_out=2)
-        return output
-    */
-#endif
-
+#if NETWORK_VARIANT == 2
+    assert(!ret);
+    ret = true;
+    //  LeNet-like model
     CONV("conv1", "input", 3, 1, 1, 3);
     POOL("pool1", "conv1", 2, 2, 3);
     CONV("conv2", "pool1", 3, 1, 3, 5);
@@ -182,8 +242,24 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output) {
     FC  ("fc5",   "relu4", 21*7*7, 16);
     RELU("relu5", "fc5",   16);
     FC  ("output","relu5", 16, 2);
+#endif
+#if NETWORK_VARIANT == 3
+    assert(!ret);
+    ret = true;
+    //  LeNet-like model
+    CONV("conv1", "input", 3, 1, 1, 6);
+    POOL("pool1", "conv1", 2, 2, 6);
+    CONV("conv2", "pool1", 3, 1, 3, 8);
+    POOL("pool2", "conv2", 2, 2, 8);
+    CONV("conv3", "pool2", 3, 1, 5, 10);
+    POOL("pool3", "conv3", 2, 2, 10);
+    RELU("relu4", "pool3", 10);
+    FC  ("fc5",   "relu4", 21*7*10, 32);
+    RELU("relu5", "fc5",   32);
+    FC  ("output","relu5", 32, 2);
+#endif
 
-    return true;
+    return ret;
 }
 
 
@@ -201,15 +277,14 @@ bool load_network(char const *name, FrameQueue *output) {
             gNetworkFailed = true;
         } else {
             for (int i = 0; i != 3; ++i) {
-                Blob *input = nullptr, *output = nullptr;
-                if (!instantiate_network(&gWorkspace[i], input, output)) {
+                if (!instantiate_network(&gWorkspace[i], inputs[i], outputs[i], nets[i])) {
                     fprintf(stderr, "Could not create network index %d\n", i);
                     gNetworkFailed = true;
                 }
             }
         }
 
-        networkInput = new FrameQueue(5, size, width, height, 8);
+        networkInput = new FrameQueue(5, size, width, height, 4);
         networkPipeline = new Pipeline(process_network);
         networkPipeline->connectInput(networkInput);
         networkPipeline->connectOutput(output);
@@ -223,6 +298,7 @@ FrameQueue *network_input_queue() {
 }
 
 void network_start() {
+    mkdir("/var/tmp/pilot/dump", 0777);
     networkPipeline->start(NULL, 3);
 }
 

@@ -26,7 +26,7 @@ int init_truetype(char const *path) {
     rewind(f);
 
     ttfbuf = malloc(ttfsize);
-    if (ttfsize != fread(ttfbuf, 1, ttfsize, f)) {
+    if (ttfsize != (long)fread(ttfbuf, 1, ttfsize, f)) {
         free(ttfbuf);
         fclose(f);
         return -1;
