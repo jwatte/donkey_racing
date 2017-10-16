@@ -41,6 +41,11 @@ static int mousex = 0;
 static int mousey = 0;
 static bool displayingMenu = false;
 
+static Mesh cursorMesh;
+static MeshDrawOp cursorDraw;
+static float cursorTransform[16];
+
+
 struct MenuItem {
     float left;
     float width;
@@ -104,7 +109,8 @@ void do_click(int mx, int my, int btn, int st) {
 }
 
 void do_move(int x, int y, unsigned int btns) {
-
+    mousex = x;
+    mousey = y;
 }
 
 void build_menu(Program const *p) {
@@ -143,6 +149,13 @@ static void draw_menu() {
     }
 }
 
+
+static void draw_cursor() {
+    gg_get_gui_transform(cursorTransform);
+    cursorTransform[12] += mousex * cursorTransform[0];
+    cursorTransform[13] += mousey * cursorTransform[5];
+    gg_draw_mesh(&cursorDraw);
+}
 
 static size_t framesDrawn;
 static uint64_t framesStart;
@@ -211,6 +224,9 @@ void do_draw() {
     fastFps = fastFps * 0.9 + 1e6 / (now - lastLoop) * 0.1;
     sprintf(fpsText, "%4.1f %4.1f", meanFps, fastFps);
     gg_draw_text(3, 3, 0.75f, fpsText, color::textred);
+
+    draw_cursor();
+
     lastLoop = now;
 }
 
@@ -328,6 +344,13 @@ unsigned short guiPictureIbuf[] = {
 2,3,0,
 };
 
+float guiCursorVbuf[] = {
+    32, 0, 1, 0,
+    0, 0, 0, 0,
+    0, -32, 0, 1,
+    32, -32, 1, 1,
+};
+
 bool build_gui() {
     gg_allocate_texture(NULL, im_width, im_height, 1, 1, &netTextureY);
     float su = float(im_width) / netTextureY.width;
@@ -341,8 +364,17 @@ bool build_gui() {
     drawMeshY.texture = &netTextureY;
     drawMeshY.mesh = &netMeshY;
     drawMeshY.transform = gg_gui_transform();
-    gg_init_color(drawMeshY.color, 0, 1, 1, 1);
+    gg_init_color(drawMeshY.color, 1, 1, 1, 1);
+
+    gg_allocate_mesh(guiCursorVbuf, 16, 16, guiPictureIbuf, 6, 8, 0, &cursorMesh, 0);
+    cursorDraw.program = drawMeshY.program;
+    cursorDraw.texture = gg_load_named_texture("cursor", errbuf, sizeof(errbuf));
+    cursorDraw.mesh = &cursorMesh;
+    cursorDraw.transform = cursorTransform;
+    gg_init_color(cursorDraw.color, 1, 1, 1, 1);
+
     build_menu(drawMeshY.program);
+
     return true;
 }
 

@@ -251,8 +251,8 @@ static bool init_ogl(Context *ctx, unsigned int width, unsigned int height) {
         perror("/dev/input/mice");
         return false;
     }
-    ctx->mousex = width / 2;
-    ctx->mousey = height / 2;
+    ctx->mousex = 0;
+    ctx->mousey = 0;
 
     unsigned char const *data;
     unsigned int bmwidth;
@@ -1074,9 +1074,13 @@ void service_mouse(Context *ctx) {
             break;
         }
         //  decode the PS/2 mouse protocol provided by the "mice" device
+resync:
         if (!(packet[0] & 8))  {
-            ::read(ctx->mousefd, packet, 1);    //  skip to sync up
-            continue;
+            memmove(&packet[0], &packet[1], 2);
+            if ((r = ::read(ctx->mousefd, &packet[2], 1) < 1)) {
+                break;
+            }
+            goto resync;
         }
         ctx->mousex += packet[1];
         ctx->mousey += packet[2];
@@ -1086,6 +1090,7 @@ void service_mouse(Context *ctx) {
         if (packet[0] & (1 << 5)) {
             ctx->mousey -= 256;
         }
+        ctx->mousebuttons = packet[0] & 7;
     }
     if (ctx->mousex < 0) {
         ctx->mousex = 0;
@@ -1099,7 +1104,6 @@ void service_mouse(Context *ctx) {
     if (ctx->mousey >= ctx->screen_height) {
         ctx->mousey = ctx->screen_height - 1;
     }
-    ctx->mousebuttons = packet[0] & 7;
 }
 
 static void generate_mouse_events(Context *ctx) {

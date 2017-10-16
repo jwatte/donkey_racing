@@ -1,9 +1,11 @@
 #include "Calibrate.h"
-#include "PinPulseIn.h"
+#include "Console.h"
 #include "FlySkyIBus.h"
-#include "Support.h"
 #include "Packets.h"
+#include "PinPulseIn.h"
+#include "Power.h"
 #include "SerialControl.h"
+#include "Support.h"
 
 #include <Servo.h>
 #include <EEPROM.h>
@@ -11,7 +13,12 @@
 
 #define CENTER_CALIBRATION 1540
 
-PinPulseIn<14> rcSteer;
+#define RC_IN_PIN 3
+#define STEER_OUT_PIN 23
+#define THROTTLE_OUT_PIN 22
+#define LED_PIN 13
+
+PinPulseIn<RC_IN_PIN> rcSteer;
 
 Servo carSteer;
 Servo carThrottle;
@@ -20,7 +27,7 @@ SerialControl gSerialControl(/*SerialUSB,*/ true);
 
 #define fsValues iBusPacket.data
 IBusPacket iBusPacket;
-FlySkyIBus iBus(Serial1, fsValues, sizeof(fsValues)/sizeof(fsValues[0]));
+FlySkyIBus iBus(Serial3, fsValues, sizeof(fsValues)/sizeof(fsValues[0]));
 
 Calibrate inSteer;
 Calibrate inThrottle;
@@ -34,10 +41,24 @@ int16_t sendThrottle = 0;
 bool hasRC = false;
 uint32_t lastModeTime = 0;
 
-
 void readTrim();
 void writeTrim();
 void maybeTrim(uint32_t now);
+
+
+void setup() {
+  pinMode(LED_PIN, OUTPUT);
+  rcSteer.init();
+  iBus.begin();
+  onCrash(detachServos);
+  readTrim();
+  gSerialControl.bind(IBusPacket::PacketCode, &iBusPacket, sizeof(iBusPacket), true);
+  gSerialControl.bind(SteerControl::PacketCode, &steerControl, sizeof(steerControl), false);
+  gSerialControl.begin();
+  setup_power();
+  setup_console();
+}
+
 
 
 void detachServos() {
@@ -51,27 +72,12 @@ void detachServos() {
 
 void attachServos() {
   if (!carSteer.attached()) {
-    carSteer.attach(23);
+    carSteer.attach(STEER_OUT_PIN);
   }
   if (!carThrottle.attached()) {
-    carThrottle.attach(22);
+    carThrottle.attach(THROTTLE_OUT_PIN);
   }
 }
-
-void setup() {
-  rcSteer.init();
-  iBus.begin();
-  pinMode(3, OUTPUT);
-  pinMode(4, OUTPUT);
-  pinMode(13, OUTPUT);
-  onCrash(detachServos);
-  readTrim();
-  gSerialControl.bind(IBusPacket::PacketCode, &iBusPacket, sizeof(iBusPacket), true);
-  gSerialControl.bind(SteerControl::PacketCode, &steerControl, sizeof(steerControl), false);
-  SerialUSB.begin(1000000);
-  gSerialControl.begin();
-}
-
 
 void loop() {
 
@@ -96,12 +102,15 @@ void loop() {
   if (!hasRC || fsValues[9] < 1750) {
     /* turn off the servos */
     detachServos();
-    digitalWrite(13, (now & (64+128+256)) == 64);
-    digitalWrite(3, (now & (64+128+256)) == 128);
-    digitalWrite(4, (now & (64+128+256)) == 192);
-    steerControl.steer = (int16_t)0x8000;
-    steerControl.throttle = (int16_t)0x8000;
-    steerChanged = true;
+    digitalWrite(LED_PIN, (now & 255) < 64);
+    if ((steerControl.steer != (int16_t)0x8000) ||
+        (steerControl.throttle != (int16_t)0x8000)) {
+      steerControl.steer = (int16_t)0x8000;
+      steerControl.throttle = (int16_t)0x8000;
+      steerChanged = true;
+    } else {
+      steerChanged = (now & 240) == 0;
+    }
   } else {
     /* send the current heading/speed */
     attachServos();
@@ -117,8 +126,6 @@ void loop() {
     carSteer.writeMicroseconds(sendSteer);
     carThrottle.writeMicroseconds(sendThrottle);
     digitalWrite(13, sendThrottle > outThrottle.center_ ? HIGH : LOW);
-    digitalWrite(3, sendSteer < outSteer.center_ ? HIGH : LOW);
-    digitalWrite(4, sendSteer > outSteer.center_ ? HIGH : LOW);
   }
   if (steerChanged) {
     if (!gSerialControl.sendNow(&steerControl)) {
@@ -128,6 +135,9 @@ void loop() {
     }
   }
 
+  update_console(now);
+  update_power(now);
+  
   uint32_t next = now;
   do {
     iBus.update();
