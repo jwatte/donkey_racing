@@ -69,7 +69,7 @@ void setup_console() {
 }
 
 void update_console(uint32_t) {
-  while (Serial1.available() || IFUSB(SerialUSB.available(), true)) {
+  while (Serial1.available() || IFUSB(SerialUSB.available(), false)) {
     char ch;
     if (IFUSB(SerialUSB.available(), false)) {
       ch = SerialUSB.read();
