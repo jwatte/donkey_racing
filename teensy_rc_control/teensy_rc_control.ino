@@ -41,6 +41,9 @@ int16_t sendThrottle = 0;
 bool hasRC = false;
 uint32_t lastModeTime = 0;
 
+HostControl hostControl;
+uint32_t lastHostControl;
+
 void readTrim();
 void writeTrim();
 void maybeTrim(uint32_t now);
@@ -79,6 +82,26 @@ void attachServos() {
   }
 }
 
+void setup() {
+  rcSteer.init();
+  iBus.begin();
+  pinMode(3, OUTPUT);
+  pinMode(4, OUTPUT);
+  pinMode(13, OUTPUT);
+  onCrash(detachServos);
+  readTrim();
+  gSerialControl.bind(IBusPacket::PacketCode, &iBusPacket, sizeof(iBusPacket), true);
+  gSerialControl.bind(SteerControl::PacketCode, &steerControl, sizeof(steerControl), false);
+  gSerialControl.bind(HostControlMode::PacketCode, &hostControl, sizeof(hostControl), false);
+  SerialUSB.begin(1000000);
+  gSerialControl.begin();
+}
+
+
+uint32_t lastDetach = 0;
+float fSteer = 0;
+float fThrottle = 0;
+
 void loop() {
 
   uint32_t now = millis();
@@ -98,30 +121,45 @@ void loop() {
     maybeTrim(now);
   }
 
+  if (gSerialControl.getFresh(&hostControl)) {
+    lastHostControl = now;
+  }
   bool steerChanged = false;
   if (!hasRC || fsValues[9] < 1750) {
     /* turn off the servos */
     detachServos();
-    digitalWrite(LED_PIN, (now & 255) < 64);
-    if ((steerControl.steer != (int16_t)0x8000) ||
-        (steerControl.throttle != (int16_t)0x8000)) {
-      steerControl.steer = (int16_t)0x8000;
-      steerControl.throttle = (int16_t)0x8000;
-      steerChanged = true;
-    } else {
-      steerChanged = (now & 240) == 0;
+    digitalWrite(13, (now & (64+128+256)) == 64);
+    digitalWrite(3, (now & (64+128+256)) == 128);
+    digitalWrite(4, (now & (64+128+256)) == 192);
+    steerControl.steer = (int16_t)0x8000;
+    steerControl.throttle = (int16_t)0x8000;
+    if (now - lastDetach > 100) {
+        steerChanged = true;
+        lastDetach = now;
     }
   } else {
     /* send the current heading/speed */
     attachServos();
     if (iBus.hasFreshFrame()) {
-      float fSteer = inSteer.mapIn(fsValues[0]);
+      fSteer = inSteer.mapIn(fsValues[0]);
       steerControl.steer = intFloat(fSteer);
       sendSteer = outSteer.mapOut(fSteer);
-      float fThrottle = inThrottle.mapIn(fsValues[1]);
+      fThrottle = inThrottle.mapIn(fsValues[1]);
       steerControl.throttle = intFloat(fThrottle);
       sendThrottle = outThrottle.mapOut(fThrottle);
       steerChanged = true;
+    }
+    /* switch 7 is middle-up for recording, all-up for autonomous */
+    if (fsValues[7] >= 1700) {
+      if (now - lastHostControl < 500) {
+        float hSteer = hostSteerCal.mapIn(hostControl.steer);
+        sendSteer = outSteer.mapOut(hSteer);
+        float hThrottle = hostThrottleCal.mapIn(hostControl.throttle);
+        sendThrottle = outThrottle.mapOut(hThrottle * fThrottle);
+      } else {
+        sendSteer = outSteer.mapOut(0.0f);
+        sendThrottle = outThrottle.mapOut(0.0f);
+      }
     }
     carSteer.writeMicroseconds(sendSteer);
     carThrottle.writeMicroseconds(sendThrottle);
@@ -129,9 +167,10 @@ void loop() {
   }
   if (steerChanged) {
     if (!gSerialControl.sendNow(&steerControl)) {
-        digitalWrite(13, HIGH);
-        digitalWrite(3, HIGH);
-        digitalWrite(4, HIGH);
+      //  communications problem
+      digitalWrite(13, HIGH);
+      digitalWrite(3, HIGH);
+      digitalWrite(4, HIGH);
     }
   }
 
@@ -152,6 +191,12 @@ static TrimInfo trimInfo;
 
 
 void maybeTrim(uint32_t now) {
+
+  if ((trimmedTime != 0) && (now - trimmedTime > 10000)) {
+    //  write to EEPROM 10 seconds after a trim has been made and no further changes
+    writeTrim();
+    trimmedTime = 0;
+  }
 
   if (now - lastTrimTime >= 80) {
   
@@ -181,7 +226,7 @@ void maybeTrim(uint32_t now) {
         outThrottle.center_ -= 1;
         trimmedTime = now;
       }
-    } else if (fsValues[4] < 1500) {
+    } else if (fsValues[4] < 1300) {
       if (outThrottle.center_ < 1700) {
         outThrottle.center_ += 1;
         trimmedTime = now;
@@ -190,12 +235,6 @@ void maybeTrim(uint32_t now) {
 
     trimInfo.curTrimSteer = outSteer.center_;
     trimInfo.curTrimThrottle = outThrottle.center_;
-
-    if ((trimmedTime != 0) && (now - trimmedTime > 10000)) {
-      //  write to EEPROM 10 seconds after a trim has been made and no further changes
-      writeTrim();
-      trimmedTime = 0;
-    }
   }
 }
 

@@ -24,6 +24,12 @@ static inline int16_t intFloat(float f) {
   return (int16_t)floorf(f * 16383 + 0.5f);
 }
 
+static inline float floatInt(int16_t i) {
+  if (i <= -32766) return -2.0f;
+  if (i >= 32766) return 2.0f;
+  return i * (1.0f / 16383.0f);
+}
+
 /* Use DebugVal to store key/value data for debugging */
 struct DebugVal {
   //  name should be a string literal

@@ -26,5 +26,13 @@ struct SteerControl {
   int16_t throttle;
 };
 
+struct HostControl {
+  enum {
+    PacketCode = 'H'
+  };
+  int16_t steer;
+  int16_t throttle;
+};
+
 #endif  //  Packets_h
 

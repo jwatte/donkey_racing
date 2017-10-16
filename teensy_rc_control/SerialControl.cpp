@@ -266,13 +266,25 @@ bool SerialControl::enqueuePayload(uint8_t id, void const *data, uint8_t length)
 
 
 void SerialControl::parseFrame(uint8_t const *data, uint8_t length) {
-  while (length > 0) {
-    uint8_t id = *data;
+try_next:
+  if (length > 0) {
+    uint8_t id = *(data++);
+    --length;
     for (int i = 0; i != MAX_ITEMS; ++i) {
       if (infos_[i].id == id) {
-        
+        if (length < infos_[i].size) {
+          // TODO: short packet
+          return;
+        }
+        memcpy(datas_[i], data, infos_[i].size);
+        infos_[i].flags |= FlagReceived;
+        length -= infos_[i].size;
+        data += infos_[i].size;
+        goto try_next;
       }
     }
+    //  TODO: unknown packet kind
+    return;
   }
 }
 

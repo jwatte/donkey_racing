@@ -252,7 +252,7 @@ void update_comms() {
     IBusPacket const *ibusPacket = serial_ibus_packet(&time, &fresh);
     if (ibusPacket && fresh) {
         Packet_IBusPacketCount.increment();
-        ibusWantsRecord = ibusPacket->data[7] > 1700;
+        ibusWantsRecord = ibusPacket->data[7] > 1300;
         //  push into recording stream
         insert_metadata(IBusPacket::PacketCode, ibusPacket, sizeof(*ibusPacket));
         memcpy(ibusData, ibusPacket->data, sizeof(ibusData));

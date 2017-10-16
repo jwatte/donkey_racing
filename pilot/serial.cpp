@@ -22,6 +22,8 @@ float gThrottleMin = 0.05f;
 float gSteer = 0.0f;
 float gThrottle = 0.0f;
 
+static HostControl hostControl;
+
 static int hidport = -1;
 static pthread_t hidthread;
 static bool hidRunning;
@@ -43,6 +45,10 @@ static char const *charstr(int i, char *str) {
     return str;
 }
 
+
+static uint16_t map_rc(float f) {
+    return (f < -1.0f) ? 1000 : (f > 1.0f) ? 2000 : (uint16_t)(1500 + f * 500);
+}
 
 static float clamp(float val, float from, float to) {
     if (val < from) return from;
@@ -136,6 +142,7 @@ template<typename T> bool unpack(IncomingPacket<T> &dst, size_t dsz, unsigned ch
 
 // buf points at frameid
 static void handle_packet(unsigned char const *buf, unsigned char const *end) {
+    // framing skips initial 55 aa
     assert(end - buf >= 5);
     uint16_t crc = crc_kermit(buf+2, end-buf-4);
     if (((crc & 0xff) != end[-2]) || (((crc >> 8) & 0xff) != end[-1])) {
@@ -146,8 +153,8 @@ static void handle_packet(unsigned char const *buf, unsigned char const *end) {
     peer_frameid = buf[0];
     //  ignore lastseen for now
     //  ignore length; already handled by caller
-    buf += 3;
-    end -= 2;
+    buf += 3;   //  skip preamble
+    end -= 2;   //  skip CRC
     while (buf != end) {
         //  decode a packet
         switch (*buf) {
@@ -182,6 +189,9 @@ static void parse_buffer(unsigned char *buf, int &bufptr) {
             //  don't yet have all the data
             goto clear_to_i;
         }
+        /* why 7 ?
+         * 55, aa, frameid, last seen, length, ..., crc, crc
+         */
         handle_packet(buf + 2, buf + 7 + buf[4]);
         return; //  success
     }
@@ -197,8 +207,15 @@ static bool send_outgoing_packet() {
     }
     unsigned char pack[64] = { 0x55, 0xAA, my_frame_id, peer_frameid, 0 };
     int dlen = 0, dmaxlen = 64-7;
-    // pack in some stuff
     (void)&dmaxlen,(void)&dlen;
+
+    // pack in some stuff
+    hostControl.steer = map_rc(gSteer);
+    hostControl.throttle = map_rc(gThrottle);
+    pack[5] = HostControl::PacketCode;
+    memcpy(&pack[6], &hostControl, sizeof(hostControl));
+    dlen += 1 + sizeof(hostControl);
+
     pack[4] = (unsigned char)(dlen & 0xff);
     uint16_t crc = crc_kermit(&pack[4], dlen+1);
     pack[5+dlen] = (unsigned char)(crc & 0xff);
