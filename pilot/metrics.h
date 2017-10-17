@@ -12,6 +12,7 @@ extern metric::Counter Process_WarpBuffers;
 extern metric::Counter Process_TotalBuffers;
 extern metric::Sampler Process_WarpFps;
 extern metric::Sampler Process_WarpPercent;
+extern metric::Sampler Process_UnwarpTime;
 extern metric::Sampler Process_NetFps;
 extern metric::Counter Process_NetBuffers;
 extern metric::Sampler Process_NetDuration;

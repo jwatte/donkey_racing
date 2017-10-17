@@ -17,6 +17,7 @@ Counter Process_WarpBuffers("process.warpbuffers");
 Counter Process_NetBuffers("process.netbuffers");
 Sampler Process_WarpFps("process.warpfps");
 Sampler Process_WarpPercent("process.warppercent");
+Sampler Process_UnwarpTime("process.unwarptime");
 Sampler Process_NetFps("process.netfps");
 Sampler Process_NetDuration("process.netduration");
 Counter Encoder_BufferCount("encoder.buffercount");

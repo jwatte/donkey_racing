@@ -81,7 +81,7 @@ static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *, int in
     uint64_t end = metric::Collector::clock();
     clocks[index] += end - start;
     counts[index] += 1;
-    if (counts[index] == 50 || clocks[index] > 1000000) {
+    if ((counts[index] == 50) || (clocks[index] > 1000000)) {
         double fps = counts[index] / (starts[index] - end);
         double msper = clocks[index] / (1000.0 * counts[index]);
         //fprintf(stderr, "\nindex %d avgtime %.1f ms\n", index, msper);

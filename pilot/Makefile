@@ -5,7 +5,7 @@ CPPFILES:=$(wildcard *.cpp)
 C_O:=$(patsubst %.c,obj/%.o,$(CFILES))
 CPP_O:=$(patsubst %.cpp,obj/%.o,$(CPPFILES))
 LIBS:=-lpthread -Wl,--no-whole-archive -lCaffe2_CPU -lglog -lprotobuf
-OPT?=-O0
+OPT?=-O2
 CFLAGS:=-Wall -Werror $(OPT) -I/usr/local/include -I/usr/local/src/caffe2/third_party/eigen
 CPPFLAGS:=$(CFLAGS) -std=gnu++11 -Wno-deprecated
 TOOL_O:=$(patsubst %,obj/%.o,$(TOOLS))
@@ -58,17 +58,17 @@ test_compile:	pilot
 		$(patsubst %,--loadtexture %,$(sort $(TEXTURENAMES)))
 
 pilot:	$(PILOT_O)
-	g++ -g -o $@ $(PILOT_O) $(LIBS) -std=gnu++11
+	g++ -g -o $@ $(PILOT_O) $(LIBS) $(OPT) -std=gnu++11
 
 define build_tool =
 $(1):	obj/$(1).o
-	g++ -g -o $(1) obj/$(1).o $(LIBS) -std=gnu++11
+	g++ -g -o $(1) obj/$(1).o $(LIBS) $(OPT) -std=gnu++11
 endef
 
 $(foreach TOOL,$(TOOLS),$(eval $(call build_tool,$(TOOL))))
 
 clean:
-	rm -rf obj $(TOOLS) pilot
+	rm -rf obj $(TOOLS) pilot gmon.out prof.txt
 
 obj/%.o:	%.c Makefile
 	@mkdir -p obj

@@ -9,6 +9,7 @@
 #include "../stb/stb_image_write.h"
 #include "serial.h"
 #include "../teensy_rc_control/Packets.h"
+#include "cleanup.h"
 #include <caffe2/core/logging_is_google_glog.h>
 
 #include <stdio.h>
@@ -18,6 +19,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include <errno.h>
+#include <signal.h>
 
 
 static char errbuf[256];
@@ -315,9 +317,12 @@ void buffer_callback(void *data, size_t size, void *cookie) {
     if (f == NULL) {
         ++numMissed;
     } else {
+        uint64_t w_start = metric::Collector::clock();
         unwarp_image(data, f->data_);
         f->endWrite();
         ++numProcessed;
+        uint64_t w_end = metric::Collector::clock();
+        Process_UnwarpTime.sample((w_end - w_start) * 1e-6);
         Process_WarpBuffers.increment();
     }
     ++nframes;
@@ -389,6 +394,11 @@ void *comms_thread(void *) {
     return NULL;
 }
 
+void do_int(int) {
+    gg_set_quit_flag();
+}
+
+
 void setup_run() {
 
     char const *network = get_setting("network", "network");
@@ -425,6 +435,7 @@ void setup_run() {
     commsRunning = true;
     pthread_create(&commsThread, NULL, comms_thread, NULL);
     //set_recording(true);
+    //
 }
 
 void enum_errors(char const *err, void *p) {
@@ -447,6 +458,7 @@ bool configure_metrics() {
 }
 
 int main(int argc, char const *argv[]) {
+    signal(SIGINT, do_int);
     google::InitGoogleLogging("pilot");
     mkdir("/var/tmp/pilot", 0775);
     if (load_settings("pilot")) {
@@ -514,8 +526,12 @@ int main(int argc, char const *argv[]) {
             fprintf(stderr, "Can't run without metrics\n");
             return -1;
         }
+        time_t curtime;
+        time(&curtime);
+        cleanup_temp_folder("/var/tmp/pilot", curtime-86400*3);
         setup_run();
         gg_run(do_idle);
+        stop_capture();
     }
     commsRunning = false;
     stop_serial();
@@ -523,6 +539,7 @@ int main(int argc, char const *argv[]) {
     stop_metrics();
     int num = 0;
     gg_get_gl_errors(enum_errors, &num);
-    return (num > 0) ? 1 : 0;
+    exit((num > 0) ? 1 : 0);
+    return 0; /*NOTREACHED*/
 }
 

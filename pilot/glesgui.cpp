@@ -1196,6 +1196,7 @@ void gg_run(void (*idlefn)()) {
         glFlush();
         eglSwapBuffers(gCtx.display, gCtx.surface);
     }
+    fprintf(stderr, "gg_run(): exiting main loop\n");
 }
 
 
