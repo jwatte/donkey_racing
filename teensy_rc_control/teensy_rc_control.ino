@@ -1,11 +1,9 @@
 #include "Calibrate.h"
-#include "Console.h"
-#include "FlySkyIBus.h"
-#include "Packets.h"
 #include "PinPulseIn.h"
-#include "Power.h"
-#include "SerialControl.h"
+#include "FlySkyIBus.h"
 #include "Support.h"
+#include "Packets.h"
+#include "SerialControl.h"
 
 #include <Servo.h>
 #include <EEPROM.h>
@@ -13,12 +11,7 @@
 
 #define CENTER_CALIBRATION 1540
 
-#define RC_IN_PIN 3
-#define STEER_OUT_PIN 23
-#define THROTTLE_OUT_PIN 22
-#define LED_PIN 13
-
-PinPulseIn<RC_IN_PIN> rcSteer;
+PinPulseIn<14> rcSteer;
 
 Servo carSteer;
 Servo carThrottle;
@@ -27,7 +20,7 @@ SerialControl gSerialControl(/*SerialUSB,*/ true);
 
 #define fsValues iBusPacket.data
 IBusPacket iBusPacket;
-FlySkyIBus iBus(Serial3, fsValues, sizeof(fsValues)/sizeof(fsValues[0]));
+FlySkyIBus iBus(Serial1, fsValues, sizeof(fsValues)/sizeof(fsValues[0]));
 
 Calibrate inSteer;
 Calibrate inThrottle;
@@ -49,21 +42,6 @@ void writeTrim();
 void maybeTrim(uint32_t now);
 
 
-void setup() {
-  pinMode(LED_PIN, OUTPUT);
-  rcSteer.init();
-  iBus.begin();
-  onCrash(detachServos);
-  readTrim();
-  gSerialControl.bind(IBusPacket::PacketCode, &iBusPacket, sizeof(iBusPacket), true);
-  gSerialControl.bind(SteerControl::PacketCode, &steerControl, sizeof(steerControl), false);
-  gSerialControl.begin();
-  setup_power();
-  setup_console();
-}
-
-
-
 void detachServos() {
   if (carSteer.attached()) {
     carSteer.detach();
@@ -75,10 +53,10 @@ void detachServos() {
 
 void attachServos() {
   if (!carSteer.attached()) {
-    carSteer.attach(STEER_OUT_PIN);
+    carSteer.attach(23);
   }
   if (!carThrottle.attached()) {
-    carThrottle.attach(THROTTLE_OUT_PIN);
+    carThrottle.attach(22);
   }
 }
 
@@ -164,6 +142,8 @@ void loop() {
     carSteer.writeMicroseconds(sendSteer);
     carThrottle.writeMicroseconds(sendThrottle);
     digitalWrite(13, sendThrottle > outThrottle.center_ ? HIGH : LOW);
+    digitalWrite(3, sendSteer < outSteer.center_ ? HIGH : LOW);
+    digitalWrite(4, sendSteer > outSteer.center_ ? HIGH : LOW);
   }
   if (steerChanged) {
     if (!gSerialControl.sendNow(&steerControl)) {
@@ -174,9 +154,6 @@ void loop() {
     }
   }
 
-  update_console(now);
-  update_power(now);
-  
   uint32_t next = now;
   do {
     iBus.update();
