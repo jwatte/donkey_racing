@@ -3,6 +3,7 @@
 #include "../stb/stb_image.h"
 #include "../stb/stb_image_write.h"
 #include "metrics.h"
+#include "lapwatch.h"
 
 #include <stdio.h>
 #include <fcntl.h>
@@ -1154,18 +1155,24 @@ void gg_set_quit_flag() {
 void gg_run(void (*idlefn)()) {
     g_running = true;
     while (g_running) {
+        START_WATCH();
         //  lastSwapTime = current_time()
         service_mouse(&gCtx);
+        LAP_WATCH("service_mouse");
         generate_mouse_events(&gCtx);
+        LAP_WATCH("generate_mouse_events");
         if (idlefn) {
             idlefn();
         }
+        LAP_WATCH("idlefn");
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glEnable(GL_BLEND);
+        LAP_WATCH("glEnable");
         if (cb_draw) {
             cb_draw();
         }
+        LAP_WATCH("cb_draw");
         if (boxVertices.size()) {
             gg_set_mesh(&boxMesh, &boxVertices[0], boxVertices.size(), &boxIndices[0], boxIndices.size());
             boxMesh.numvertices = boxVertices.size();
@@ -1175,6 +1182,7 @@ void gg_run(void (*idlefn)()) {
             boxVertices.clear();
             boxIndices.clear();
         }
+        LAP_WATCH("boxVertices");
         if (lineVertices.size()) {
             gg_set_mesh(&lineMesh, &lineVertices[0], lineVertices.size(), NULL, 0);
             lineMesh.numvertices = lineVertices.size();
@@ -1183,6 +1191,7 @@ void gg_run(void (*idlefn)()) {
             gg_draw_mesh(&mdo);
             lineVertices.clear();
         }
+        LAP_WATCH("lineVertices");
         if (textVertices.size()) {
             gg_set_mesh(&fontMesh, &textVertices[0], textVertices.size(), &textIndices[0], textIndices.size());
             fontMesh.numvertices = textVertices.size();
@@ -1192,9 +1201,12 @@ void gg_run(void (*idlefn)()) {
             textVertices.clear();
             textIndices.clear();
         }
+        LAP_WATCH("textVertices");
         check();
         glFlush();
+        LAP_WATCH("glFlush");
         eglSwapBuffers(gCtx.display, gCtx.surface);
+        LAP_WATCH("eglSwapBuffers");
     }
     fprintf(stderr, "gg_run(): exiting main loop\n");
 }

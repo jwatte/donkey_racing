@@ -302,7 +302,6 @@ void do_idle() {
         fr->endRead();
         gg_update_texture(&netTextureY, 0, im_width, 0, im_height);
     }
-
 }
 
 

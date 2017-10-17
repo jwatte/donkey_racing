@@ -22,6 +22,8 @@ uint64_t get_microseconds() {
 }
 #else
 
+#error "not on raspberry pi"
+
 #include <time.h>
 
 uint64_t get_microseconds_base() {
