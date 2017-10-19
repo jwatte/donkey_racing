@@ -3,6 +3,7 @@
 #include "../stb/stb_image.h"
 #include "../stb/stb_image_write.h"
 #include "metrics.h"
+#include "lapwatch.h"
 
 #include <stdio.h>
 #include <fcntl.h>
@@ -27,9 +28,16 @@
 
 #define check() _check_gl_error(__FILE__, __LINE__, __PRETTY_FUNCTION__)
 
+#define READMOUSE 0
+#define READX 1
+
+#if READX
+#include <X11/Xlib.h>
+#endif
+
 //  Define this to convert all texture formats to RGBA 
 //  to work around bugs.
-//#define ALWAYS_RGBA 1
+#define ALWAYS_RGBA 1
 
 //  Define this to always use glTexImage2D() even when 
 //  glTexSubImage2D() would do.
@@ -47,7 +55,13 @@ struct Context {
 
     EGL_DISPMANX_WINDOW_T nativewindow;
 
+#if READMOUSE
     int mousefd;
+#endif
+#if READX
+    Display *xdisplay;
+    Window rootwindow;
+#endif
     unsigned int mousebuttons;
     unsigned int mousex;
     unsigned int mousey;
@@ -126,6 +140,14 @@ void gg_break_gl_error(void (*func)(char const *error, void *cookie), void *cook
 }
 
 
+#if READX
+static int x_error(Display *, XErrorEvent *e) {
+    fprintf(stderr, "x_error: display error: type %d; error_code %d\n",
+        e->type, e->error_code);
+    exit(1);
+}
+#endif
+
 static bool init_ogl(Context *ctx, unsigned int width, unsigned int height) {
 
     bcm_host_init();
@@ -141,7 +163,13 @@ static bool init_ogl(Context *ctx, unsigned int width, unsigned int height) {
 #endif
 
     memset(ctx, 0, sizeof(*ctx));
+#if READMOUSE
     ctx->mousefd = -1;
+#endif
+#if READX
+    ctx->xdisplay = nullptr;
+    memset(&ctx->rootwindow, 0, sizeof(ctx->rootwindow));
+#endif
     ctx->screen_width = width;
     ctx->screen_height = height;
 
@@ -246,11 +274,25 @@ static bool init_ogl(Context *ctx, unsigned int width, unsigned int height) {
 
     check();
 
+#if READMOUSE
     ctx->mousefd = ::open("/dev/input/mice", O_RDONLY | O_NONBLOCK);
     if (ctx->mousefd < 0) {
         perror("/dev/input/mice");
         return false;
     }
+#endif
+#if READX
+    ctx->xdisplay = XOpenDisplay("localhost:0.0");
+    if (!ctx->xdisplay) {
+        ctx->xdisplay = XOpenDisplay(":0");
+    }
+    if (!ctx->xdisplay) {
+        perror("XOpenDisplay()");
+        return false;
+    }
+    XSetErrorHandler(x_error);
+    ctx->rootwindow = XRootWindow(ctx->xdisplay, 0);
+#endif
     ctx->mousex = width / 2;
     ctx->mousey = height / 2;
 
@@ -959,25 +1001,35 @@ void gg_set_named_program_transforms(float const *transform) {
 }
 
 void gg_draw_mesh(MeshDrawOp const *draw) {
+    START_WATCH("gg_draw_mesh");
     check();
+    LAP_WATCH("check");
     use(draw->program);
+    LAP_WATCH("use program");
     if (draw->transform) {
         gg_set_program_transform(draw->program, draw->transform);
     }
+    LAP_WATCH("gg_set_program_transform");
     if (draw->texture) {
         use(draw->texture);
     }
+    LAP_WATCH("use texture");
     use(draw->mesh, draw->program);
+    LAP_WATCH("use mesh");
     if (draw->program->g_color != (unsigned int)-1) {
         glUniform4fv(draw->program->g_color, 1, draw->color);
     }
+    LAP_WATCH("glUniform color");
     if (draw->mesh->numindices) {
         glDrawElements(draw->primitive == PK_Lines ? GL_LINES : GL_TRIANGLES,
             draw->mesh->numindices, GL_UNSIGNED_SHORT, (GLvoid *)0);
+        LAP_WATCH("glDrawElements");
     } else {
         glDrawArrays(draw->primitive == PK_Lines ? GL_LINES : GL_TRIANGLES, 0, draw->mesh->numvertices);
+        LAP_WATCH("glDrawArrays");
     }
     check();
+    LAP_REPORT();
 }
 
 void gg_get_gui_transform(float *oMatrix) {
@@ -1062,6 +1114,7 @@ void gg_draw_box(float left, float bottom, float right, float top, uint32_t colo
 
 
 void service_mouse(Context *ctx) {
+#if READMOUSE
     if (ctx->mousefd <= 0) {
         return;
     }
@@ -1094,6 +1147,18 @@ resync:
         }
         ctx->mousebuttons = packet[0] & 7;
     }
+#else
+    Window retroot, retwin;
+    int rootx = 0, rooty = 0, winx = 0, winy = 0;
+    unsigned int buttons = 0;
+    if (XQueryPointer(ctx->xdisplay, ctx->rootwindow, &retroot, &retwin,
+                &rootx, &rooty, &winx, &winy, &buttons) == True) {
+        ctx->mousex = rootx;
+        ctx->mousey = ctx->screen_height - rooty - 1;
+        assert(Button1Mask == (1 << 8));
+        ctx->mousebuttons = (buttons >> 8) & 7;
+    }
+#endif
     if (ctx->mousex < 0) {
         ctx->mousex = 0;
     }
@@ -1110,6 +1175,8 @@ resync:
 
 static void generate_mouse_events(Context *ctx) {
     if (ctx->mousex != ctx->prevx || ctx->mousey != ctx->prevy) {
+        ctx->prevx = ctx->mousex;
+        ctx->prevy = ctx->mousey;
         if (cb_mousemove) {
             cb_mousemove(ctx->mousex, ctx->mousey, ctx->prevbuttons);
         }
@@ -1156,18 +1223,24 @@ void gg_set_quit_flag() {
 void gg_run(void (*idlefn)()) {
     g_running = true;
     while (g_running) {
+        START_WATCH("gg_run");
         //  lastSwapTime = current_time()
         service_mouse(&gCtx);
+        LAP_WATCH("service_mouse");
         generate_mouse_events(&gCtx);
+        LAP_WATCH("generate_mouse_events");
         if (idlefn) {
             idlefn();
         }
+        LAP_WATCH("idlefn");
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glEnable(GL_BLEND);
+        LAP_WATCH("start_draw");
         if (cb_draw) {
             cb_draw();
         }
+        LAP_WATCH("cb_draw");
         if (boxVertices.size()) {
             gg_set_mesh(&boxMesh, &boxVertices[0], boxVertices.size(), &boxIndices[0], boxIndices.size());
             boxMesh.numvertices = boxVertices.size();
@@ -1177,6 +1250,7 @@ void gg_run(void (*idlefn)()) {
             boxVertices.clear();
             boxIndices.clear();
         }
+        LAP_WATCH("boxVertices");
         if (lineVertices.size()) {
             gg_set_mesh(&lineMesh, &lineVertices[0], lineVertices.size(), NULL, 0);
             lineMesh.numvertices = lineVertices.size();
@@ -1185,6 +1259,7 @@ void gg_run(void (*idlefn)()) {
             gg_draw_mesh(&mdo);
             lineVertices.clear();
         }
+        LAP_WATCH("lineVertices");
         if (textVertices.size()) {
             gg_set_mesh(&fontMesh, &textVertices[0], textVertices.size(), &textIndices[0], textIndices.size());
             fontMesh.numvertices = textVertices.size();
@@ -1194,9 +1269,13 @@ void gg_run(void (*idlefn)()) {
             textVertices.clear();
             textIndices.clear();
         }
+        LAP_WATCH("textVertices");
         check();
         glFlush();
+        LAP_WATCH("glFlush()");
         eglSwapBuffers(gCtx.display, gCtx.surface);
+        LAP_WATCH("eglSwapBuffers()");
+        LAP_REPORT();
     }
 }
 

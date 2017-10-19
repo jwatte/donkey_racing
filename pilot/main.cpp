@@ -9,6 +9,7 @@
 #include "../stb/stb_image_write.h"
 #include "serial.h"
 #include "../teensy_rc_control/Packets.h"
+#include "lapwatch.h"
 #include "cleanup.h"
 #include <caffe2/core/logging_is_google_glog.h>
 
@@ -88,6 +89,7 @@ MenuItem gMenu[] = {
 
 Mesh gMenuMesh;
 MeshDrawOp gMenuDraw;
+float menuXform[16];
 
 
 void do_click(int mx, int my, int btn, int st) {
@@ -137,7 +139,8 @@ void build_menu(Program const *p) {
     char err[200];
     gMenuDraw.texture = gg_load_named_texture("menuitem", err, 200);
     gMenuDraw.mesh = &gMenuMesh;
-    gMenuDraw.transform = nullptr;
+    gg_get_gui_transform(menuXform);
+    gMenuDraw.transform = menuXform;
     gg_init_color(gMenuDraw.color, 1, 1, 1, 1);
     gMenuDraw.primitive = PK_Triangles;
 }
@@ -168,7 +171,8 @@ static double fastFps = 15.0f;
 void do_draw() {
     char fpsText[20] = { 0 };
     uint64_t now = metric::Collector::clock();
-    gg_draw_mesh(&drawMeshY);
+    //gg_draw_mesh(&drawMeshY);
+    START_WATCH("do_draw");
 
     if (drawMetrics && drawFlags) {
         int y = 2;
@@ -192,6 +196,7 @@ void do_draw() {
             y += 1;
         }
     }
+    LAP_WATCH("drawFlags");
 
     if (drawSteer) {
         gg_draw_box(400-328, 300, 400+328, 340, color::bggray);
@@ -203,6 +208,7 @@ void do_draw() {
             gg_draw_box(400 + steerControlData.steer / 50, 300, 400, 340, color::bgblue);
         }
     }
+    LAP_WATCH("drawSteer");
 
     if (drawMetrics && drawIbus) {
         for (int i = 0; i != 10; ++i) {
@@ -211,6 +217,7 @@ void do_draw() {
             gg_draw_text(10+70*i, 300, 0.75f, buf, color::textgray);
         }
     }
+    LAP_WATCH("drawIbus");
 
     ++framesDrawn;
     if ((framesDrawn == 64) || (now - framesStart > 1000000)) {
@@ -222,14 +229,18 @@ void do_draw() {
     }
 
     draw_menu();
+    LAP_WATCH("draw_menu");
 
     fastFps = fastFps * 0.9 + 1e6 / (now - lastLoop) * 0.1;
     sprintf(fpsText, "%4.1f %4.1f", meanFps, fastFps);
     gg_draw_text(3, 3, 0.75f, fpsText, color::textred);
+    LAP_WATCH("fps");
 
     draw_cursor();
+    LAP_WATCH("draw_cursor");
 
     lastLoop = now;
+    LAP_REPORT();
 }
 
 static unsigned char byte_from_float(float f) {
@@ -300,7 +311,7 @@ void do_idle() {
             }
         }
         fr->endRead();
-        gg_update_texture(&netTextureY, 0, im_width, 0, im_height);
+        //gg_update_texture(&netTextureY, 0, im_width, 0, im_height);
     }
 }
 
@@ -463,7 +474,7 @@ int main(int argc, char const *argv[]) {
     if (load_settings("pilot")) {
         fprintf(stderr, "Loaded settings from '%s'\n", "pilot");
     }
-    if (gg_setup(800, 480, 0, 0, "pilot") < 0) {
+    if (gg_setup(get_setting_int("width", 1024), get_setting_int("height", 600), 0, 0, "pilot") < 0) {
         fprintf(stderr, "GLES context setup failed\n");
         return -1;
     }

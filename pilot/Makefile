@@ -14,7 +14,7 @@ ifeq ($(wildcard /opt/vc),)
 else
 CFLAGS+=-I/opt/vc/include
 CPPFLAGS+=-I/opt/vc/include
-LIBS+=-L/opt/vc/lib -lvcos -lmmal -lmmal_core -lmmal_util -lbcm_host -L/opt/vc/lib/ -lbrcmGLESv2 -lbrcmEGL
+LIBS+=-L/opt/vc/lib -lvcos -lmmal -lmmal_core -lmmal_util -lbcm_host -L/opt/vc/lib/ -lbrcmGLESv2 -lbrcmEGL -lX11
 endif
 
 
