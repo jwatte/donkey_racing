@@ -21,6 +21,9 @@ void CRASH_ERROR(char const *msg) {
   int n = 0;
   while (true) {
     if ((n & 63) == 63) {
+      if (Serial2.availableForWrite() >= sl+2) {
+        Serial2.println(msg);
+      }
       if (SerialUSB.availableForWrite() >= sl+2) {
         SerialUSB.println(msg);
       }

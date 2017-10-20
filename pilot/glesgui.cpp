@@ -31,13 +31,15 @@
 #define READMOUSE 0
 #define READX 1
 
+#define GL_CHECK_ERRORS 0
+
 #if READX
 #include <X11/Xlib.h>
 #endif
 
 //  Define this to convert all texture formats to RGBA 
 //  to work around bugs.
-#define ALWAYS_RGBA 1
+// #define ALWAYS_RGBA 1
 
 //  Define this to always use glTexImage2D() even when 
 //  glTexSubImage2D() would do.
@@ -107,6 +109,7 @@ char const *gl_error_str(GLuint ui) {
 }
 
 static bool _check_gl_error(char const *file, int line, char const *function) {
+#if CHECK_GL_ERRORS
     GLuint err = glGetError();
     bool ok = true;
     while (err != 0) {
@@ -126,6 +129,9 @@ static bool _check_gl_error(char const *file, int line, char const *function) {
         err = glGetError();
     }
     return ok;
+#else
+    return true;
+#endif
 }
 
 void gg_get_gl_errors(void (*func)(char const *err, void *cookie), void *cookie) {

@@ -147,17 +147,11 @@ class SerialControl {
     };
 
     /*  Framing has been detected, and CRC checks out. Look at the 
-     *  buffer and pick it apart into separate packets, calling parsePacket()
+     *  buffer and pick it apart into separate packets, writing bound items
      *  for each. You only need to override this for special processing.
      */
     virtual void parseFrame(uint8_t const *data, uint8_t length);
     
-    /*  Given a packet in the frame, decode it, and return how much data was 
-     *  consumed. If you don't know, return maxsize. Decoding includes moving 
-     *  data to the bound output pointer, if available.
-     */
-    virtual uint8_t parsePacket(uint8_t type, uint8_t const *data, uint8_t maxsize);
-
     /*  If the ID of a packet is not known, this callback is called so that you 
      *  can do something useful with if if you want. Default does nothing.
      */

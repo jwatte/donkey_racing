@@ -24,6 +24,8 @@ FlySkyIBus iBus(Serial1, fsValues, sizeof(fsValues)/sizeof(fsValues[0]));
 
 Calibrate inSteer;
 Calibrate inThrottle;
+Calibrate hostSteerCal;
+Calibrate hostThrottleCal;
 Calibrate outSteer(CENTER_CALIBRATION);
 Calibrate outThrottle;
 
@@ -70,7 +72,7 @@ void setup() {
   readTrim();
   gSerialControl.bind(IBusPacket::PacketCode, &iBusPacket, sizeof(iBusPacket), true);
   gSerialControl.bind(SteerControl::PacketCode, &steerControl, sizeof(steerControl), false);
-  gSerialControl.bind(HostControlMode::PacketCode, &hostControl, sizeof(hostControl), false);
+  gSerialControl.bind(HostControl::PacketCode, &hostControl, sizeof(hostControl), false);
   SerialUSB.begin(1000000);
   gSerialControl.begin();
 }

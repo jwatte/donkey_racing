@@ -10,6 +10,7 @@
 #include "serial.h"
 #include "../teensy_rc_control/Packets.h"
 #include "lapwatch.h"
+#include "filethread.h"
 #include "cleanup.h"
 #include <caffe2/core/logging_is_google_glog.h>
 
@@ -23,6 +24,14 @@
 #include <signal.h>
 
 
+/* When this is set to non-zero, the camera pipeline
+ * is started. This ends up doing "something" that 
+ * causes the VCore to stall out and make GL run at 
+ * just a handful of frames per second.
+ */
+#define VERY_SLOW_GL 1
+
+
 static char errbuf[256];
 static FrameQueue guiFromNetwork(3, 0, 0, 0, 0);
 static Texture netTextureY;
@@ -34,11 +43,11 @@ static int im_planes;
 static size_t im_size;
 static bool ibusWantsRecord;
 static bool drawFlags = true;
-static bool drawIbus = false;
-static bool drawSteer = false;
+static bool drawIbus = true;
+static bool drawSteer = true;
 static uint16_t ibusData[10];
 static SteerControl steerControlData;
-static bool drawMetrics = false;
+static bool drawMetrics = true;
 
 static int mousex = 0;
 static int mousey = 0;
@@ -79,11 +88,17 @@ void do_toggle_metrics(MenuItem *mi, int x, int y) {
     drawMetrics = !drawMetrics;
 }
 
+void do_save_settings(MenuItem *, int, int) {
+    fprintf(stderr, "save_settings()\n");
+    save_settings("pilot");
+}
+
 MenuItem gMenu[] = {
     { 100, 600,  50, 60,           do_quit, "Quit"            },
     { 100, 600, 150, 60,    do_steer_scale, "Steer Scale"     },
     { 100, 600, 250, 60, do_throttle_scale, "Throttle Scale"  },
     { 100, 600, 350, 60, do_toggle_metrics, "Toggle Metrics"  },
+    { 100, 600, 450, 60,  do_save_settings, "Save Settings"   },
     { 0 }
 };
 
@@ -97,7 +112,8 @@ void do_click(int mx, int my, int btn, int st) {
             mx, my, btn, st);
     mousex = mx;
     mousey = my;
-    if (btn == 0 && st) {
+    //  top-right corner
+    if (btn == 0 && st && mx > 800 && my > 400) {
         if (!displayingMenu) {
             displayingMenu = true;
         } else {
@@ -169,9 +185,9 @@ static double meanFps = 15.0f;
 static double fastFps = 15.0f;
 
 void do_draw() {
-    char fpsText[20] = { 0 };
+    char fpsText[40] = { 0 };
     uint64_t now = metric::Collector::clock();
-    //gg_draw_mesh(&drawMeshY);
+    gg_draw_mesh(&drawMeshY);
     START_WATCH("do_draw");
 
     if (drawMetrics && drawFlags) {
@@ -181,31 +197,33 @@ void do_draw() {
             double avg = 0.0;
             uint64_t tim = 0;
             f->get(flag, avg, tim);
-            uint32_t c = flag ? color::textyellow : color::textblue;
-            gg_draw_text(3, y * 20, 0.75f, f->name(), c);
-            gg_draw_text(400, y * 20, 0.75f, flag ? "ON" : "", c);
-            sprintf(fpsText, "%4.2f", avg);
-            gg_draw_text(450, y * 20, 0.75f, fpsText, c);
-            double age = (now - tim) * 1e-6;
-            if (age < 100.0f) {
-                sprintf(fpsText, "%5.2f", age);
-            } else {
-                strcpy(fpsText, "old");
+            if (flag) {
+                uint32_t c = flag ? color::textyellow : color::textblue;
+                gg_draw_text(3, y * 20, 0.75f, f->name(), c);
+                gg_draw_text(400, y * 20, 0.75f, flag ? "ON" : "", c);
+                sprintf(fpsText, "%4.2f", avg);
+                gg_draw_text(450, y * 20, 0.75f, fpsText, c);
+                double age = (now - tim) * 1e-6;
+                if (age < 100.0f) {
+                    sprintf(fpsText, "%5.2f", age);
+                } else {
+                    strcpy(fpsText, "old");
+                }
+                gg_draw_text(520, y * 20, 0.75f, fpsText, c);
+                y += 1;
             }
-            gg_draw_text(520, y * 20, 0.75f, fpsText, c);
-            y += 1;
         }
     }
     LAP_WATCH("drawFlags");
 
     if (drawSteer) {
-        gg_draw_box(400-328, 300, 400+328, 340, color::bggray);
+        gg_draw_box(512-328, 300, 512+328, 340, color::bggray);
         if (steerControlData.steer == (int16_t)0x8000) {
-            gg_draw_box(360, 300, 440, 340, color::bgred);
+            gg_draw_box(512-40, 300, 512+40, 340, color::bgred);
         } else if (abs(steerControlData.steer) < 10) {
-            gg_draw_box(398, 300, 402, 340, color::bggreen);
+            gg_draw_box(512-2, 300, 512+2, 340, color::bggreen);
         } else {
-            gg_draw_box(400 + steerControlData.steer / 50, 300, 400, 340, color::bgblue);
+            gg_draw_box(512 + steerControlData.steer / 50, 300, 512, 340, color::bgblue);
         }
     }
     LAP_WATCH("drawSteer");
@@ -214,33 +232,34 @@ void do_draw() {
         for (int i = 0; i != 10; ++i) {
             char buf[12];
             sprintf(buf, "%4d", ibusData[i]); 
-            gg_draw_text(10+70*i, 300, 0.75f, buf, color::textgray);
+            gg_draw_text(10+70*i, 270, 0.75f, buf, color::textgray);
         }
     }
     LAP_WATCH("drawIbus");
 
-    ++framesDrawn;
-    if ((framesDrawn == 64) || (now - framesStart > 1000000)) {
-        double newFps = framesDrawn * 1e6 / (now - framesStart);
-        Graphics_Fps.sample(newFps);
-        framesDrawn = 0;
-        framesStart = now;
-        meanFps = meanFps * 0.8 + newFps * 0.2;
-    }
-
     draw_menu();
     LAP_WATCH("draw_menu");
 
-    fastFps = fastFps * 0.9 + 1e6 / (now - lastLoop) * 0.1;
-    sprintf(fpsText, "%4.1f %4.1f", meanFps, fastFps);
+    fastFps = fastFps * 0.8 + 1e6 / (now - lastLoop) * 0.2;
+    sprintf(fpsText, "FPS: %5.1f %5.1f  Scale: %5.2f %5.2f", meanFps, fastFps, gSteerScale, gThrottleScale);
+
+    ++framesDrawn;
+    if (now - framesStart >= 1000000) {
+        fprintf(stderr, "\n%s\n", fpsText);
+        meanFps = framesDrawn * 1e6 / (now - framesStart);
+        Graphics_Fps.sample(meanFps);
+        framesDrawn = 0;
+        framesStart = now;
+    }
+
     gg_draw_text(3, 3, 0.75f, fpsText, color::textred);
     LAP_WATCH("fps");
 
     draw_cursor();
     LAP_WATCH("draw_cursor");
 
-    lastLoop = now;
     LAP_REPORT();
+    lastLoop = now;
 }
 
 static unsigned char byte_from_float(float f) {
@@ -311,7 +330,7 @@ void do_idle() {
             }
         }
         fr->endRead();
-        //gg_update_texture(&netTextureY, 0, im_width, 0, im_height);
+        gg_update_texture(&netTextureY, 0, im_width, 0, im_height);
     }
 }
 
@@ -420,19 +439,22 @@ void setup_run() {
 
     networkQueue = network_input_queue();
 
+    start_filethread();
     get_unwarp_info(&im_size, &im_width, &im_height, &im_planes);
     build_gui();
+    network_start();
 
     static char path[1024];
     time_t t;
     time(&t);
     char const *capture = get_setting("capture", "/var/tmp/pilot/capture");
     sprintf(path, "%s-%ld", capture, (long)t);
+#if VERY_SLOW_GL
     CaptureParams cap = {
         640, 480, path, &buffer_callback, NULL
     };
-    network_start();
     setup_capture(&cap);
+#endif
     fprintf(stderr, "capture directed to %s\n", capture);
 
     char const *tty = get_setting("serial", "/dev/ttyACM0");
@@ -444,8 +466,6 @@ void setup_run() {
 
     commsRunning = true;
     pthread_create(&commsThread, NULL, comms_thread, NULL);
-    //set_recording(true);
-    //
 }
 
 void enum_errors(char const *err, void *p) {

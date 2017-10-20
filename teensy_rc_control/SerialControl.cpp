@@ -1,4 +1,4 @@
-
+#include <Arduino.h>
 #include "SerialControl.h"
 #include "FastCRC.h"
 #include "Support.h"
@@ -155,6 +155,7 @@ void SerialControl::writeOutput(uint32_t now) {
     uint16_t crc = gKermit.kermit(&outBuf_[4], outPtr_-4);
     outBuf_[outPtr_] = crc & 0xff;
     outBuf_[outPtr_+1] = (crc >> 8) & 0xff;
+    memset(&outBuf_[outPtr_+2], 0, sizeof(outBuf_)-outPtr_-2);
     if (RawHID.send(outBuf_, 0)) {
       outPtr_ = 0;
     }
@@ -276,6 +277,7 @@ try_next:
           // TODO: short packet
           return;
         }
+        digitalWrite(13, HIGH);
         memcpy(datas_[i], data, infos_[i].size);
         infos_[i].flags |= FlagReceived;
         length -= infos_[i].size;
@@ -284,13 +286,9 @@ try_next:
       }
     }
     //  TODO: unknown packet kind
+    unknownPacketId(id, data, length);
     return;
   }
-}
-
-
-uint8_t SerialControl::parsePacket(uint8_t type, uint8_t const *data, uint8_t maxsize) {
-  
 }
 
 

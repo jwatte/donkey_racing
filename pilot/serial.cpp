@@ -266,7 +266,7 @@ static void *ser_fn(void *) {
                 lastHidSendTime = now - (now % HID_SEND_INTERVAL);
                 //  do send
                 if (!send_outgoing_packet()) {
-                    puts("send error");
+                    fprintf(stderr, "\nsend error");
                     Serial_Error.set();
                     ++nerror;
                     if (nerror >= 10) {
@@ -353,19 +353,11 @@ bad_fd:
     return -1;
 }
 
-bool start_serial(char const *port, int speed) {
-    if (hidthread) {
-        return false;
-    }
-    if (hidport != -1) {
-        return false;
-    }
-    gSteerScale = get_setting_float("steer_scale", gSteerScale);
-    gThrottleScale = get_setting_float("throttle_scale", gThrottleScale);
-    gThrottleMin = get_setting_float("throttle_min", gThrottleMin);
-
+bool open_hidport(char const *port) {
     hidport = verify_open(port);
     if (hidport < 0) {
+        //  If the specified port doesn't work, then 
+        //  try all raw hid devices, looking for ours.
         for (int i = 0; i != 99; ++i) {
             char buf[30];
             sprintf(buf, "/dev/hidraw%d", i);
@@ -379,7 +371,24 @@ bool start_serial(char const *port, int speed) {
             return false;
         }
     }
+    return true;
+}
 
+bool start_serial(char const *port, int speed) {
+    if (hidthread) {
+        return false;
+    }
+    if (hidport != -1) {
+        return false;
+    }
+    gSteerScale = get_setting_float("steer_scale", gSteerScale);
+    gThrottleScale = get_setting_float("throttle_scale", gThrottleScale);
+    gThrottleMin = get_setting_float("throttle_min", gThrottleMin);
+
+    open_hidport(port);
+    if (hidport < 0) {
+        return false;
+    }
     hidRunning = true;
     if (pthread_create(&hidthread, NULL, ser_fn, NULL) < 0) {
         close(hidport);
@@ -399,6 +408,22 @@ void stop_serial() {
         hidport = -1;
         hidthread = 0;
     }
+}
+
+void serial_reset() {
+    if (hidport < 0) {
+        open_hidport("/dev/foo");
+    }
+    if (hidport < 0) {
+        fprintf(stderr, "serial_reset(): could not open HID port\n");
+        return;
+    }
+    int wr = ::write(hidport, "reset!", 6);
+    if (wr != 6) {
+        perror("serial_reset()");
+    }
+    close(hidport);
+    hidport = -1;
 }
 
 

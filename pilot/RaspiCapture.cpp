@@ -43,6 +43,7 @@ extern "C" {
 
 
 #include "RaspiCapture.h"
+#include "filethread.h"
 #include <string>
 
 #include "settings.h"
@@ -93,7 +94,7 @@ typedef struct RASPIVID_STATE_S RASPIVID_STATE;
 */
 typedef struct
 {
-    FILE *file_handle;                   /// File handle to write buffer data to.
+    bool file_handle;                   /// File handle to write buffer data to.
     RASPIVID_STATE *pstate;              /// pointer to our state in case required in callback
     int abort;                           /// Set to 1 in callback if an error occurs to attempt to abort the capture
     int  flush_buffers;
@@ -180,7 +181,7 @@ static void default_status(RASPIVID_STATE *state)
     state->level = MMAL_VIDEO_LEVEL_H264_4;
 
     state->segmentSize = 0; // don't segment
-    state->segmentNumber = 1;
+    state->segmentNumber = 0;
     state->shouldRecord = 0;
 
     state->cameraNum = 0;
@@ -244,25 +245,30 @@ static void camera_control_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
 }
 
 
-static bool write_riff_header(FILE *f) {
+static size_t bwrite(void const *d, size_t n, size_t m, std::vector<char> &f) {
+    f.insert(f.end(), (char const *)d, (char const *)d + n * m);
+    return m;
+}
+
+static bool write_riff_header(std::vector<char> &f) {
     unsigned char data[12] = {
         'R', 'I', 'F', 'F',
         0, 0, 0, 0,
         'h', '2', '6', '4',
     };
-    return 12 == fwrite(data, 1, 12, f);
+    return 12 == bwrite(data, 1, 12, f);
 }
 
-static bool write_chunk_header(FILE *f, char const *type, size_t size) {
+static bool write_chunk_header(std::vector<char> &f, char const *type, size_t size) {
     unsigned char data[8] = {
         (unsigned char)type[0], (unsigned char)type[1], (unsigned char)type[2], (unsigned char)type[3],
         (unsigned char)(size & 0xff), (unsigned char)((size >> 8) & 0xff),
         (unsigned char)((size >> 16) & 0xff), (unsigned char)((size >> 24) & 0xff)
     };
-    return 8 == fwrite(data, 1, 8, f);
+    return 8 == bwrite(data, 1, 8, f);
 }
 
-static bool write_rounded_chunk(FILE *f, char const *type, size_t size, void const *data) {
+static bool write_rounded_chunk(std::vector<char> &f, char const *type, size_t size, void const *data) {
     if (!write_chunk_header(f, type, size)) {
         return false;
     }
@@ -270,18 +276,18 @@ static bool write_rounded_chunk(FILE *f, char const *type, size_t size, void con
      * can round up and write past the end of requested data for purposes of alignment.
      */
     size_t ru = (size + 3) & ~3;
-    if (ru != fwrite(data, 1, ru, f)) {
+    if (ru != bwrite(data, 1, ru, f)) {
         return false;
     }
     return true;
 }
 
-static bool write_timeinfo_chunk(FILE *f, char const *type, void const *data, size_t dataSize) {
+static bool write_timeinfo_chunk(std::vector<char> &f, char const *type, void const *data, size_t dataSize) {
     uint64_t timestamp = metric::Collector::clock();
     if (!write_chunk_header(f, type, dataSize+8)) {
         return false;
     }
-    if (8 != fwrite(&timestamp, 1, 8, f)) {
+    if (8 != bwrite(&timestamp, 1, 8, f)) {
         return false;
     }
     if (dataSize > 0) {
@@ -289,17 +295,28 @@ static bool write_timeinfo_chunk(FILE *f, char const *type, void const *data, si
         /* hack alert! round written data up to 4, so input buffer must always be 
          * padded to that size.
          */
-        if (ru != fwrite(data, 1, ru, f)) {
+        if (ru != bwrite(data, 1, ru, f)) {
             return false;
         }
     }
     return true;
 }
 
-static void write_info_header(FILE *f) {
+static void write_info_header(std::vector<char> &f) {
     char info[512];
     sprintf(info, "date=%s time=%s", __DATE__, __TIME__);
     write_rounded_chunk(f, "info", strlen(info), info);
+}
+
+
+static void reap_results() {
+    FileResult rslt[8];
+    size_t n = get_results(rslt, 8);
+    for (size_t i = 0; i != n; ++i) {
+        if (rslt[i].result < 0) {
+            fprintf(stderr, "filewrite error: file %d op %d error %d\n", rslt[i].name, rslt[i].type, rslt[i].result);
+        }
+    }
 }
 
 /**
@@ -307,9 +324,8 @@ static void write_info_header(FILE *f) {
  *
  * @param state Pointer to state
  */
-static FILE *open_filename(RASPIVID_STATE *pState, char *filename)
+static void open_filename(RASPIVID_STATE *pState, char *filename)
 {
-    FILE *new_handle = NULL;
     char *tempname = NULL;
 
     char fnpat[1024];
@@ -330,20 +346,17 @@ static FILE *open_filename(RASPIVID_STATE *pState, char *filename)
     }
     strcat(fnpat, "-%04d");
     strcat(fnpat, dot);
+    pState->segmentNumber++;
     asprintf(&tempname, fnpat, pState->segmentNumber);
 
-    new_handle = fopen(tempname, "wb");
-    if (!new_handle) {
-        perror(tempname);
-    } else {
-        pState->segmentNumber++;
-        write_riff_header(new_handle);
-        write_info_header(new_handle);
-    }
+    new_file(pState->segmentNumber, tempname);
+    std::vector<char> f;
+    write_riff_header(f);
+    write_info_header(f);
+    write_file_vec(pState->segmentNumber, f);
+    reap_results();
 
     free(tempname);
-
-    return new_handle;
 }
 
 
@@ -385,7 +398,7 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
     PORT_USERDATA *pData = (PORT_USERDATA *)port->userdata;
     if (pData != NULL) {
         RASPIVID_STATE *pstate = pData->pstate;
-        int64_t current_time = metric::Collector::clock()/1000;
+        int64_t current_time_ms = metric::Collector::clock()/1000;
 
         int bytes_written = buffer->length;
         Encoder_BufferCount.increment();
@@ -396,25 +409,25 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
             //  keyframe?
             if (buffer->flags & MMAL_BUFFER_HEADER_FLAG_CONFIG) {
                 //  start each new segment on a keyframe, so close if we've filled the time segment size
-                if (pData->pstate->segmentSize && (current_time > pData->segment_start_time + pData->pstate->segmentSize)) {
+                if (pData->pstate->segmentSize && (current_time_ms > pData->segment_start_time + pData->pstate->segmentSize)) {
                     if (pData->file_handle) {
-                        fclose(pData->file_handle);
-                        pData->file_handle = NULL;
+                        close_file(pstate->segmentNumber);
+                        pData->file_handle = false;
                     }
-                    pData->segment_start_time = current_time;
+                    pData->segment_start_time = current_time_ms;
                 }
                 if (!pData->file_handle) {
-                    pData->file_handle = open_filename(pstate, pstate->filename);
+                    open_filename(pstate, pstate->filename);
+                    pData->file_handle = true;
                     pData->pts_base = (buffer->pts == MMAL_TIME_UNKNOWN) ? 0 : buffer->pts;
                     pData->dts_base = (buffer->dts == MMAL_TIME_UNKNOWN) ? 0 : buffer->dts;
-                    pData->segment_start_time = current_time;
+                    pData->segment_start_time = current_time_ms;
                     pData->infobuf_size = 0;
-                    pData->segment_start_time = 0;
                 }
             }
 
             //  If I have a file and have data, write data to the file!
-            if (pData->file_handle != NULL && buffer->length) {
+            if (pData->file_handle && buffer->length) {
 
                 mmal_buffer_header_mem_lock(buffer);
                 if(buffer->flags & MMAL_BUFFER_HEADER_FLAG_CODECSIDEINFO) {
@@ -422,32 +435,34 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
                     bytes_written = buffer->length;
                 } else {
                     bytes_written = buffer->length;
-                    if (!write_timeinfo_chunk(pData->file_handle, "time", pData->infobuf, pData->infobuf_size)) {
+                    std::vector<char> f;
+                    if (!write_timeinfo_chunk(f, "time", pData->infobuf, pData->infobuf_size)) {
                         bytes_written = 0;
                     }
                     pData->infobuf_size = 0;
                     int64_t timestamps[2] = { buffer->pts - pData->pts_base, buffer->dts - pData->dts_base };
-                    if (!write_rounded_chunk(pData->file_handle, "pdts", 16, timestamps)) {
+                    if (!write_rounded_chunk(f, "pdts", 16, timestamps)) {
                         bytes_written = 0;
                     }
-                    if (!write_rounded_chunk(pData->file_handle, "h264", buffer->length, buffer->data)) {
+                    if (!write_rounded_chunk(f, "h264", buffer->length, buffer->data)) {
                         bytes_written = 0;
                     }
-                    if(pData->flush_buffers) fflush(pData->file_handle);
+                    write_file_vec(pstate->segmentNumber, f);
+                    reap_results();
                 }
 
                 mmal_buffer_header_mem_unlock(buffer);
 
                 if (bytes_written != (int)buffer->length) {
-                    vcos_log_error("Failed to write buffer data (%d from %d)- aborting", bytes_written, buffer->length);
+                    fprintf(stderr, "Failed to write buffer data (%d from %d)- aborting", bytes_written, buffer->length);
                     pstate->shouldRecord = false;
-                    fclose(pData->file_handle);
-                    pData->file_handle = NULL;
+                    pData->file_handle = false;
+                    close_file(pstate->segmentNumber);
                 }
             }
         } else if (pData->file_handle) {
-            fclose(pData->file_handle);
-            pData->file_handle = NULL;
+            close_file(pstate->segmentNumber);
+            pData->file_handle = false;
         }
     }
 
@@ -1157,8 +1172,8 @@ int stop_capture()
 
     // Can now close our file. Note disabling ports may flush buffers which causes
     // problems if we have already closed the file!
-    if (state.callback_data.file_handle && state.callback_data.file_handle != stdout)
-        fclose(state.callback_data.file_handle);
+    if (state.callback_data.file_handle)
+        close_file(state.segmentNumber);
 
     /* Disable components */
     if (state.encoder_component)

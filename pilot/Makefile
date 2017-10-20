@@ -1,5 +1,5 @@
 
-TOOLS:=rifftoh264
+TOOLS:=rifftoh264 reset
 CFILES:=$(wildcard *.c)
 CPPFILES:=$(wildcard *.cpp)
 C_O:=$(patsubst %.c,obj/%.o,$(CFILES))
@@ -41,6 +41,8 @@ TEXTURENAMES:=$(patsubst data/%.jpg,%,$(patsubst data/%.png,%,$(patsubst data/%.
 MESHES:=$(wildcard data/*.mesh)
 MESHNAMES:=$(patsubst data/%.mesh,%,$(MESHES))
 
+OBJ_riff2h264:=
+OBJ_reset:=obj/metric.o obj/crckrmit.o obj/serial.o obj/settings.o obj/metrics.o
 
 #test:	mkdetect mkchecker
 #	#./mkchecker > checker.yuv
@@ -62,7 +64,7 @@ pilot:	$(PILOT_O)
 
 define build_tool =
 $(1):	obj/$(1).o
-	g++ -g -o $(1) obj/$(1).o $(LIBS) $(OPT) -std=gnu++11
+	g++ -g -o $(1) obj/$(1).o $(LIBS) $(OPT) $(OBJ_$(1)) -std=gnu++11
 endef
 
 $(foreach TOOL,$(TOOLS),$(eval $(call build_tool,$(TOOL))))
@@ -70,11 +72,11 @@ $(foreach TOOL,$(TOOLS),$(eval $(call build_tool,$(TOOL))))
 clean:
 	rm -rf obj $(TOOLS) pilot gmon.out prof.txt
 
-obj/%.o:	%.c Makefile
+obj/%.o:	%.c
 	@mkdir -p obj
 	gcc -g -c -o $@ $< -MMD $(CFLAGS) -std=gnu11
 
-obj/%.o:	%.cpp Makefile
+obj/%.o:	%.cpp
 	@mkdir -p obj
 	g++ -g -c -o $@ $< -MMD $(CPPFLAGS)
 
