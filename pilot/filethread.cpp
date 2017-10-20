@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
 
 #include <string>
 #include <list>
@@ -85,6 +86,24 @@ class FileWriteThing : public Thing {
         }
 };
 
+class FileFlushThing : public Thing {
+    public:
+        FileFlushThing(int name)
+            : Thing(FILE_CLOSE, name)
+        {
+        }
+
+        int perform() override {
+            auto const &ptr(files.find(name_));
+            if (ptr == files.end()) {
+                //fprintf(stderr, "attempt to flush unknown file %d\n", name_);
+                return -1;
+            }
+            fflush((*ptr).second);
+            return 0;
+        }
+};
+
 class FileCloseThing : public Thing {
     public:
         FileCloseThing(int name)
@@ -99,6 +118,7 @@ class FileCloseThing : public Thing {
                 return -1;
             }
             fclose((*ptr).second);
+            sync();
             files.erase(ptr);
             return 0;
         }
@@ -209,6 +229,20 @@ bool write_file_vec(int name, std::vector<char> &f) {
     FileWriteThing *fwt = new FileWriteThing(name, NULL, 0);
     fwt->buf_.swap(f);
     things.push_back(fwt);
+    pthread_cond_signal(&fileCond);
+    pthread_mutex_unlock(&fileMutex);
+    return true;
+}
+
+bool flush_file(int name) {
+    pthread_mutex_lock(&fileMutex);
+    if (frAlloc - frTail >= sizeof(results)/sizeof(results[0])) {
+        pthread_mutex_unlock(&fileMutex);
+        fprintf(stderr, "out of result space; get results before queuing more work!\n");
+        return false;
+    }
+    frAlloc++;
+    things.push_back(new FileFlushThing(name));
     pthread_cond_signal(&fileCond);
     pthread_mutex_unlock(&fileMutex);
     return true;

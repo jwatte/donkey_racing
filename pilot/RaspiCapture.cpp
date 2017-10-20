@@ -423,6 +423,8 @@ static void encoder_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buf
                     pData->dts_base = (buffer->dts == MMAL_TIME_UNKNOWN) ? 0 : buffer->dts;
                     pData->segment_start_time = current_time_ms;
                     pData->infobuf_size = 0;
+                } else {
+                    flush_file(pstate->segmentNumber);
                 }
             }
 
