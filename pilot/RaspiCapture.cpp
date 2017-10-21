@@ -310,7 +310,7 @@ static void write_info_header(std::vector<char> &f) {
 
 
 static void reap_results() {
-    FileResult rslt[8];
+    FileResult rslt[100];
     size_t n = get_results(rslt, 8);
     for (size_t i = 0; i != n; ++i) {
         if (rslt[i].result < 0) {

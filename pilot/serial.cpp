@@ -18,7 +18,7 @@
 
 float gSteerScale = 1.0f;
 float gThrottleScale = 0.4f;
-float gThrottleMin = 0.05f;
+float gThrottleMin = 0.06f;
 float gSteer = 0.0f;
 float gThrottle = 0.0f;
 
@@ -58,7 +58,7 @@ static float clamp(float val, float from, float to) {
 
 void serial_steer(float steer, float throttle) {
     gSteer = clamp(steer * gSteerScale, -1.0f, 1.0f);
-    gThrottle = clamp(throttle * gThrottleScale, gThrottleMin, 1.0f);
+    gThrottle = gThrottleMin + clamp(throttle * gThrottleScale, 0, 1.0f);
 }
 
 static void hexdump(void const *vp, int end) {

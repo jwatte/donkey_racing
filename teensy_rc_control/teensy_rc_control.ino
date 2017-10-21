@@ -11,6 +11,7 @@
 
 #define CENTER_CALIBRATION 1535
 #define STEER_INVERT true
+#define MIN_THROTTLE 1535
 
 PinPulseIn<14> rcSteer;
 
@@ -145,6 +146,9 @@ void loop() {
         sendSteer = outSteer.mapOut(hSteer);
         float hThrottle = hostThrottleCal.mapIn(hostControl.throttle);
         sendThrottle = outThrottle.mapOut(hThrottle * fThrottle);
+        if (sendThrottle < MIN_THROTTLE && fThrottle > 0) {
+          sendThrottle = MIN_THROTTLE;
+       }
       } else {
         sendSteer = outSteer.mapOut(0.0f);
         sendThrottle = outThrottle.mapOut(0.0f);
