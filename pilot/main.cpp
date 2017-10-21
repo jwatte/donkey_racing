@@ -31,6 +31,9 @@
  */
 #define VERY_SLOW_GL 1
 
+extern float gSteer;
+extern float gThrottle;
+
 
 static char errbuf[256];
 static FrameQueue guiFromNetwork(3, 0, 0, 0, 0);
@@ -79,9 +82,9 @@ void do_steer_scale(MenuItem *mi, int x, int y) {
 }
 
 void do_throttle_scale(MenuItem *mi, int x, int y) {
-    gThrottleScale = float(x) / mi->width + 0.1f;
+    gThrottleScale = 0.5f * float(x) / mi->width + 0.1f;
     fprintf(stderr, "do_throttle_scale(%d, %d) -> %.2f\n", x, y, gThrottleScale);
-    set_setting_float("throttle_scale", gSteerScale);
+    set_setting_float("throttle_scale", gThrottleScale);
 }
 
 void do_toggle_metrics(MenuItem *mi, int x, int y) {
@@ -113,18 +116,16 @@ void do_click(int mx, int my, int btn, int st) {
     mousex = mx;
     mousey = my;
     //  top-right corner
-    if (btn == 0 && st && mx > 800 && my > 400) {
-        if (!displayingMenu) {
-            displayingMenu = true;
-        } else {
-            for (MenuItem *m = gMenu; m->func; ++m) {
-                if (mx >= m->left && mx <= m->left + m->width && my >= m->bottom && my <= m->bottom + m->height) {
-                    m->func(m, mx - m->left, my - m->bottom);
-                    break;
-                }
+    if (displayingMenu) {
+        for (MenuItem *m = gMenu; m->func; ++m) {
+            if (mx >= m->left && mx <= m->left + m->width && my >= m->bottom && my <= m->bottom + m->height) {
+                m->func(m, mx - m->left, my - m->bottom);
+                break;
             }
-            displayingMenu = false;
         }
+        displayingMenu = false;
+    } else if (btn == 0 && st && mx > 800 && my > 400) {
+        displayingMenu = true;
     }
 }
 
@@ -185,12 +186,12 @@ static double meanFps = 15.0f;
 static double fastFps = 15.0f;
 
 void do_draw() {
-    char fpsText[40] = { 0 };
+    char fpsText[60] = { 0 };
     uint64_t now = metric::Collector::clock();
     gg_draw_mesh(&drawMeshY);
     START_WATCH("do_draw");
 
-    if (drawMetrics && drawFlags) {
+    if (!displayingMenu && drawMetrics && drawFlags) {
         int y = 2;
         for (metric::Flag const *f = metric::Collector::iterFlags(); f; f = metric::Collector::nextFlag(f)) {
             bool flag = false;
@@ -216,7 +217,7 @@ void do_draw() {
     }
     LAP_WATCH("drawFlags");
 
-    if (drawSteer) {
+    if (!displayingMenu && drawSteer) {
         gg_draw_box(512-328, 300, 512+328, 340, color::bggray);
         if (steerControlData.steer == (int16_t)0x8000) {
             gg_draw_box(512-40, 300, 512+40, 340, color::bgred);
@@ -228,7 +229,7 @@ void do_draw() {
     }
     LAP_WATCH("drawSteer");
 
-    if (drawMetrics && drawIbus) {
+    if (!displayingMenu && drawMetrics && drawIbus) {
         for (int i = 0; i != 10; ++i) {
             char buf[12];
             sprintf(buf, "%4d", ibusData[i]); 
@@ -241,7 +242,8 @@ void do_draw() {
     LAP_WATCH("draw_menu");
 
     fastFps = fastFps * 0.8 + 1e6 / (now - lastLoop) * 0.2;
-    sprintf(fpsText, "FPS: %5.1f %5.1f  Scale: %5.2f %5.2f", meanFps, fastFps, gSteerScale, gThrottleScale);
+    sprintf(fpsText, "FPS: %5.1f %5.1f  Scl: %5.2f %5.2f  Ctl: %5.2f %5.2f",
+            meanFps, fastFps, gSteerScale, gThrottleScale, gSteer, gThrottle);
 
     ++framesDrawn;
     if (now - framesStart >= 1000000) {
@@ -405,7 +407,7 @@ bool build_gui() {
     cursorDraw.texture = gg_load_named_texture("cursor", errbuf, sizeof(errbuf));
     cursorDraw.mesh = &cursorMesh;
     cursorDraw.transform = cursorTransform;
-    gg_init_color(cursorDraw.color, 1, 1, 1, 1);
+    gg_init_color(cursorDraw.color, 0.8, 0.5, 0.2, 1);
 
     build_menu(drawMeshY.program);
 

@@ -43,7 +43,6 @@ static uint64_t clocks[3];
 static uint64_t starts[3];
 static int counts[3];
 
-
 float gSteerAdjust = 0.5f;
 float gThrottleBase = 2.5f;
 float gThrottleAdjust = 0.4f;
