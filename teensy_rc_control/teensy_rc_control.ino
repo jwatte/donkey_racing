@@ -9,7 +9,8 @@
 #include <EEPROM.h>
 
 
-#define CENTER_CALIBRATION 1540
+#define CENTER_CALIBRATION 1535
+#define STEER_INVERT true
 
 PinPulseIn<14> rcSteer;
 
@@ -42,6 +43,14 @@ uint32_t lastHostControl;
 void readTrim();
 void writeTrim();
 void maybeTrim(uint32_t now);
+
+
+static inline uint16_t map_polarity(uint16_t s, bool invert) {
+  if (invert) {
+    return 3000 - s;
+  }
+  return s;
+}
 
 
 void detachServos() {
@@ -141,7 +150,7 @@ void loop() {
         sendThrottle = outThrottle.mapOut(0.0f);
       }
     }
-    carSteer.writeMicroseconds(sendSteer);
+    carSteer.writeMicroseconds(map_polarity(sendSteer, STEER_INVERT));
     carThrottle.writeMicroseconds(sendThrottle);
     digitalWrite(13, sendThrottle > outThrottle.center_ ? HIGH : LOW);
     digitalWrite(3, sendSteer < outSteer.center_ ? HIGH : LOW);

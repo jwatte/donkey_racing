@@ -1220,7 +1220,7 @@ int setup_capture(CaptureParams const *cp)
     state.framerate = VIDEO_FRAME_RATE_NUM;
     state.intraperiod = 60;
     state.segmentSize = SEGMENT_SECONDS * 1000;
-    state.quantisationParameter = QUANT_PARAM; //0; // 10 == extreme quality; 40 == good compression
+    state.quantisationParameter = get_setting_int("video.quantization", QUANT_PARAM); //0; // 10 == extreme quality; 40 == good compression
     state.profile = MMAL_VIDEO_PROFILE_H264_HIGH;
     state.level = MMAL_VIDEO_LEVEL_H264_4;
     state.filename = strdup(gparams.encodedFilename);
