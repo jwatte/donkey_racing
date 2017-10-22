@@ -15,7 +15,7 @@ from caffe2.proto import caffe2_pb2
 
 BATCH_SIZE=32
 LEARN_RATE=-0.01
-train_iters=1000000
+train_iters=100000
 #train_iters=50000
 iter_val=0
 
