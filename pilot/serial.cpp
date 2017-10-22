@@ -21,6 +21,7 @@ float gThrottleScale = 0.4f;
 float gThrottleMin = 0.06f;
 float gSteer = 0.0f;
 float gThrottle = 0.0f;
+float gTweakSteer = 0.0;
 
 static HostControl hostControl;
 
@@ -210,7 +211,7 @@ static bool send_outgoing_packet() {
     (void)&dmaxlen,(void)&dlen;
 
     // pack in some stuff
-    hostControl.steer = map_rc(gSteer);
+    hostControl.steer = map_rc(gSteer + gTweakSteer);
     hostControl.throttle = map_rc(gThrottle);
     pack[5] = HostControl::PacketCode;
     memcpy(&pack[6], &hostControl, sizeof(hostControl));
@@ -381,6 +382,7 @@ bool start_serial(char const *port, int speed) {
     if (hidport != -1) {
         return false;
     }
+    gTweakSteer = get_setting_float("steer_tweak", gTweakSteer);
     gSteerScale = get_setting_float("steer_scale", gSteerScale);
     gThrottleScale = get_setting_float("throttle_scale", gThrottleScale);
     gThrottleMin = get_setting_float("throttle_min", gThrottleMin);
