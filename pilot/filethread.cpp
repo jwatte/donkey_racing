@@ -195,8 +195,8 @@ bool new_file(int name, char const *path) {
     if (frAlloc - frTail >= sizeof(results)/sizeof(results[0])) {
         pthread_mutex_unlock(&fileMutex);
         fprintf(stderr,
-            "out of result space %d %d; get results before queuing more work!\n",
-            frAlloc, frTail);
+            "out of result space %ld %ld; get results before queuing more work!\n",
+            (long)frAlloc, (long)frTail);
         return false;
     }
     frAlloc++;

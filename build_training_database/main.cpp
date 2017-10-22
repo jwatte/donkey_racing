@@ -29,6 +29,7 @@ extern "C" {
 
 #include "math2.h"
 #include "../pilot/image.h"
+#include "../pilot/yuv.h"
 
 #define CAFFE2_LOG_THRESHOLD 1
 #include <caffe2/core/logging_is_not_google_glog.h>
@@ -172,6 +173,18 @@ void mkfalse(unsigned char *d, unsigned char ix) {
     d[0] = (r > 1.0f) ? 255 : (r < 0.0f) ? 0 : (unsigned char)r;
     d[1] = (g > 1.0f) ? 255 : (g < 0.0f) ? 0 : (unsigned char)g;
     d[2] = (b > 1.0f) ? 255 : (b < 0.0f) ? 0 : (unsigned char)b;
+}
+
+void write_yuv_as_rgb(int w, int h, unsigned char const *y, unsigned char const *u, unsigned char const *v, char const *path) {
+    unsigned char *compose = (unsigned char *)malloc(w*h*3/2);
+    memcpy(compose, y, w*h);
+    memcpy(compose+w*h, u, (w/2)*(h/2));
+    memcpy(compose+w*h+(w/2)*(h/2), v, (w/2)*(h/2));
+    unsigned char *out = (unsigned char *)malloc(w*h*3);
+    yuv_to_rgb(compose, out, w, h);
+    free(compose);
+    stbi_write_png(path, w, h, 3, (char const *)out, 0);
+    free(out);
 }
 
 void write_false_color(char const *name, int width, int height, unsigned char const *frame)
@@ -1103,8 +1116,8 @@ dump_stuff:
         stbi_write_png(name, opw, oph, 1, frame, 0);
     }
     label[0] = (votecount > 0.01) ? (votes / votecount) : 0.25;
-    if (fabs(label[0]) > 1.25) {
-        label[0] = (label[0] < 0) ? -1.25 : 1.25;
+    if (fabs(label[0]) > 1.0) {
+        label[0] = (label[0] < 0) ? -1.0 : 1.0;
     }
     label[1] = 0.4 / (fabs(label[0]) + 0.3);
     if (label[1] > 1.0) {
@@ -1125,6 +1138,8 @@ dump_stuff:
     }
 }
 
+int write_serial = 400;
+
 void database_frame(
         int serial,
         int width, int height,
@@ -1137,11 +1152,15 @@ void database_frame(
         fprintf(stderr, "sorry, database only works with 640x480 I420 format input frames\n");
         exit(1);
     }
+    if (write_serial >= 0 && serial >= write_serial) {
+        write_yuv_as_rgb(640, 480, (unsigned char const *)y, (unsigned char const *)u, (unsigned char const *)v, "rgb640.png");
+        write_serial = -1;
+    }
     bool record_this = true;
     if (serial < skip) {
         record_this = false;
     }
-    if (throttle < 0.05) {
+    if (throttle < 0.02) {
         record_this = false;
     }
     float mat[6] = { 1, 0, 0, 0, 1, 0 };

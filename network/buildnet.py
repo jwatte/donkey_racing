@@ -174,7 +174,7 @@ if training:
                 if math.isnan(loss[i]) or math.isnan(steer):
                         logfile.write('\nNaN detected -- model diverges. Emergency brake.\n')
                         print('\nNaN detected -- model diverges. Emergency brake.')
-                        os.exit(4)
+                        sys.exit(4)
                 # if (i % 5000 == 0):
                 #     for j in deploy.params:
                 #         ba = workspace.FetchBlob(j)

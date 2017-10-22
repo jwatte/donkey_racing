@@ -2,7 +2,8 @@
 import cv2
 import time
 
-NUM_NEEDED=15
+NUM_NEEDED=30
+NUM_CAPTURE = 2*NUM_NEEDED
 cap = cv2.VideoCapture(0)
 cap.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT, 480)
@@ -16,7 +17,7 @@ cv2.waitKey(1)
 cv2.waitKey(1)
 cv2.waitKey(5000)
 print("press a key for each picture (or wait 3 seconds)")
-for i in range(0, 30):
+for i in range(0, NUM_CAPTURE):
     cv2.waitKey(3000)
     print("capture")
     s, im0 = cap.read()

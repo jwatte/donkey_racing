@@ -3,8 +3,15 @@
 #include <string.h>
 #include <math.h>
 #include "../calibrate_camera/table.h"
+#include "yuv.h"
+#include "../stb/stb_image_write.h"
 
 
+//  215.5 -57.8 7.1
+//
+#define CENTER_Y 215
+#define CENTER_U -58
+#define CENTER_V 7
 
 /* TODO: Currently only B/W images (Y channel) */
 
@@ -43,9 +50,9 @@ static inline float sample_yuv(unsigned char const *y, unsigned char const *u, u
             (c * (1.0f - x1d) + d * x1d) * y1d);
     int uy = yc / 2;
     int ux = xc / 2;
-    float uu = u[uy * (SOURCE_WIDTH/2) + ux] + 12;
-    float vv = v[ux] - 35;
-    return munge(255 + yy*1.5f - (fabsf(yy-200) + fabsf(uu) + fabsf(vv)) * 0.65f) * BYTE_TO_FLOAT;
+    float uu = u[uy * (SOURCE_WIDTH/2) + ux]-128;
+    float vv = v[ux]-128;
+    return munge(255 + yy*1.5f - (fabsf(yy-CENTER_Y) + fabsf(uu-CENTER_U) + fabsf(vv-CENTER_V)) * 0.65f) * BYTE_TO_FLOAT;
 }
 
 static inline float sample_y(unsigned char const *y, TableInputCoord const tic) {
@@ -102,7 +109,6 @@ void unwarp_transformed_bytes(void const *yp, void const *up, void const *vp, fl
         }
     }
 }
-
 
 /* the table of data is included once here */
 #include "../calibrate_camera/table.cpp"

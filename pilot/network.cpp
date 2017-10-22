@@ -112,8 +112,8 @@ bool load_network_db(char const *name) {
             fprintf(stderr, "could not open neural network file: %s\n", name);
             return false;
         }
-        fgets(line, 1024, f);
-        if (strcmp(line, "crunk 1.0\n")) {
+        if (!fgets(line, 1024, f) ||
+                strcmp(line, "crunk 1.0\n")) {
             fprintf(stderr, "%s: not a crunk file\n", name);
             fclose(f);
             return false;
