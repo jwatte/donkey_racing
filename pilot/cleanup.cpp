@@ -8,6 +8,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <sys/statvfs.h>
 
 #include <map>
 #include <string>
@@ -15,6 +16,21 @@
 static std::map<std::string, std::map<time_t, std::string>> filesToClean;
 
 bool cleanup_temp_folder(char const *f, time_t before) {
+    if (!f) {
+        return false;
+    }
+    struct statvfs vfss = { 0 };
+    if (statvfs(f, &vfss) < 0) {
+        perror(f);
+        return false;
+    }
+    unsigned long long freespace = (unsigned long long)vfss.f_bavail;
+    freespace = freespace * (unsigned long long)vfss.f_bsize;
+    fprintf(stderr, "%s: %llu MB free\n", f, freespace / 1024 / 1024);
+    if (freespace > 1024*1024*1024) {
+        //  more than a gig available? Don't clean up.
+        return true;
+    }
     DIR *d = opendir(f);
     if (!d) {
         return false;
