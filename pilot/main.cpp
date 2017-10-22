@@ -489,10 +489,38 @@ bool configure_metrics() {
     return true;
 }
 
+
+bool nomarg(int *pac, char const ***pav, char const *arg) {
+    for (int i = 1; i != *pac; ++i) {
+        if (!strcmp(arg, (*pav)[i])) {
+            memcpy(&(*pav)[i], &(*pav)[i+1], (*pac - i) * sizeof(char const *));
+            *pac -= 1;
+            return true;
+        }
+    }
+    return false;
+}
+
 int main(int argc, char const *argv[]) {
     signal(SIGINT, do_int);
     google::InitGoogleLogging("pilot");
     mkdir("/var/tmp/pilot", 0775);
+    if (nomarg(&argc, &argv, "--logfile")) {
+        char logpath[128];
+        time_t t;
+        time(&t);
+        sprintf(logpath, "/var/tmp/pilot/pilot-%ld-err.log", (long)t);
+        FILE *q = freopen(logpath, "wb", stderr);
+        if (!q) {
+            perror(logpath);
+        }
+        sprintf(logpath, "/var/tmp/pilot/pilot-%ld-out.log", (long)t);
+        q = freopen(logpath, "wb", stderr);
+        if (!q) {
+            perror(logpath);
+        }
+        set_setting_long("running_status", 0);
+    }
     if (load_settings("pilot")) {
         fprintf(stderr, "Loaded settings from '%s'\n", "pilot");
     }
