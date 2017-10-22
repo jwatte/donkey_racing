@@ -30,7 +30,7 @@ static inline float munge(float f) {
 static inline float sample_yuv(unsigned char const *y, unsigned char const *u, unsigned char const *v, TableInputCoord const tic) {
     float y1f = floorf(tic.sy);
     float y1d = tic.sy - y1f;
-    int yc = (int)y1f + 15;
+    int yc = (int)y1f;
     int x1f = floorf(tic.sx);
     float x1d = tic.sx - x1f;
     int xc = (int)x1f;
