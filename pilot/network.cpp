@@ -67,7 +67,7 @@ static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *, int in
     }
     inputs[index]->GetMutable<Tensor<CPUContext>>()->FreeMemory();
     float const *output = (float const *)outputs[index]->Get<Tensor<CPUContext>>().data<float>();
-    if (running_status)
+    if (running_status && !((counts[index] + index * 10) & 31))
     {
         fprintf(stderr, "\rNet index %1d: steer %8.2f throttle %8.2f  ", index, output[0], output[1]);
     }
