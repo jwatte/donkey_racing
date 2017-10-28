@@ -1,0 +1,327 @@
+EESchema Schematic File Version 2
+LIBS:power
+LIBS:device
+LIBS:switches
+LIBS:relays
+LIBS:motors
+LIBS:transistors
+LIBS:conn
+LIBS:linear
+LIBS:regul
+LIBS:74xx
+LIBS:cmos4000
+LIBS:adc-dac
+LIBS:memory
+LIBS:xilinx
+LIBS:microcontrollers
+LIBS:dsp
+LIBS:microchip
+LIBS:analog_switches
+LIBS:motorola
+LIBS:texas
+LIBS:intel
+LIBS:audio
+LIBS:interface
+LIBS:digital-audio
+LIBS:philips
+LIBS:display
+LIBS:cypress
+LIBS:siliconi
+LIBS:opto
+LIBS:atmel
+LIBS:contrib
+LIBS:valves
+LIBS:teensy_3
+LIBS:MF_Aesthetics
+LIBS:MF_Connectors
+LIBS:MF_Discrete_Semiconductor
+LIBS:MF_Displays
+LIBS:MF_Frequency_Control
+LIBS:MF_IC_Analog
+LIBS:MF_IC_Digital
+LIBS:MF_IC_Power
+LIBS:MF_LEDs
+LIBS:MF_Passives
+LIBS:MF_Sensors
+LIBS:MF_Switches
+LIBS:teensy_32_v2-cache
+EELAYER 25 0
+EELAYER END
+$Descr A4 11693 8268
+encoding utf-8
+Sheet 3 4
+Title ""
+Date ""
+Rev ""
+Comp ""
+Comment1 ""
+Comment2 ""
+Comment3 ""
+Comment4 ""
+$EndDescr
+$Comp
+L RESISTOR_0805 R?
+U 1 1 59ED6992
+P 5300 3500
+F 0 "R?" V 5200 3400 45  0000 L BNN
+F 1 "1K" V 5200 3550 45  0000 L BNN
+F 2 "MF_Passives:MF_Passives-R0805" H 5550 3410 20  0001 C CNN
+F 3 "" H 5300 3500 60  0001 C CNN
+	1    5300 3500
+	0    1    1    0   
+$EndComp
+$Comp
+L RESISTOR_0805 R?
+U 1 1 59ED6A0D
+P 5300 3850
+F 0 "R?" V 5200 3750 45  0000 L BNN
+F 1 "1K" V 5200 3900 45  0000 L BNN
+F 2 "MF_Passives:MF_Passives-R0805" H 5550 3760 20  0001 C CNN
+F 3 "" H 5300 3850 60  0001 C CNN
+	1    5300 3850
+	0    1    1    0   
+$EndComp
+$Comp
+L RESISTOR_0805 R?
+U 1 1 59ED6E9C
+P 6000 2500
+F 0 "R?" V 5900 2400 45  0000 L BNN
+F 1 "2K" V 5900 2550 45  0000 L BNN
+F 2 "MF_Passives:MF_Passives-R0805" H 6250 2410 20  0001 C CNN
+F 3 "" H 6000 2500 60  0001 C CNN
+	1    6000 2500
+	1    0    0    -1  
+$EndComp
+$Comp
+L RESISTOR_0805 R?
+U 1 1 59ED6EA2
+P 6350 2500
+F 0 "R?" V 6250 2400 45  0000 L BNN
+F 1 "2K" V 6250 2550 45  0000 L BNN
+F 2 "MF_Passives:MF_Passives-R0805" H 6600 2410 20  0001 C CNN
+F 3 "" H 6350 2500 60  0001 C CNN
+	1    6350 2500
+	1    0    0    -1  
+$EndComp
+$Comp
+L CJ J?
+U 1 1 59ED707E
+P 4900 3500
+F 0 "J?" H 4900 3425 39  0000 C CNN
+F 1 "CJ" H 4900 3575 39  0000 C CNN
+F 2 "" H 4900 3500 39  0000 C CNN
+F 3 "" H 4900 3500 39  0000 C CNN
+	1    4900 3500
+	1    0    0    -1  
+$EndComp
+$Comp
+L CJ J?
+U 1 1 59ED70B4
+P 4900 3850
+F 0 "J?" H 4900 3775 39  0000 C CNN
+F 1 "CJ" H 4900 3925 39  0000 C CNN
+F 2 "" H 4900 3850 39  0000 C CNN
+F 3 "" H 4900 3850 39  0000 C CNN
+	1    4900 3850
+	1    0    0    -1  
+$EndComp
+$Comp
+L CJ J?
+U 1 1 59ED70E0
+P 4900 2850
+F 0 "J?" H 4900 2775 39  0000 C CNN
+F 1 "CJ" H 4900 2925 39  0000 C CNN
+F 2 "" H 4900 2850 39  0000 C CNN
+F 3 "" H 4900 2850 39  0000 C CNN
+	1    4900 2850
+	1    0    0    -1  
+$EndComp
+$Comp
+L CJ J?
+U 1 1 59ED7129
+P 4900 3100
+F 0 "J?" H 4900 3025 39  0000 C CNN
+F 1 "CJ" H 4900 3175 39  0000 C CNN
+F 2 "" H 4900 3100 39  0000 C CNN
+F 3 "" H 4900 3100 39  0000 C CNN
+	1    4900 3100
+	1    0    0    -1  
+$EndComp
+$Comp
+L +3V3 #PWR?
+U 1 1 59ED724A
+P 6350 950
+F 0 "#PWR?" H 6350 800 50  0001 C CNN
+F 1 "+3V3" H 6350 1090 50  0000 C CNN
+F 2 "" H 6350 950 50  0001 C CNN
+F 3 "" H 6350 950 50  0001 C CNN
+	1    6350 950 
+	1    0    0    -1  
+$EndComp
+Text HLabel 7300 2850 2    60   Input ~ 0
+R_SDA
+Text HLabel 7300 3100 2    60   Input ~ 0
+R_SCL
+Text HLabel 7300 3500 2    60   Input ~ 0
+R_TX
+Text HLabel 7300 3850 2    60   Input ~ 0
+R_RX
+Text HLabel 4000 2850 0    60   Input ~ 0
+T_SDA
+Text HLabel 4000 3100 0    60   Input ~ 0
+T_SCL
+Text HLabel 4000 3500 0    60   Input ~ 0
+T_RX3
+Text HLabel 4000 3850 0    60   Input ~ 0
+T_TX3
+$Comp
+L PCF8563 U?
+U 1 1 59ED946C
+P 4650 1850
+F 0 "U?" H 4350 2200 50  0000 L CNN
+F 1 "PCF8563" H 4750 2200 50  0000 L CNN
+F 2 "" H 4650 1850 50  0001 C CNN
+F 3 "" H 4650 1850 50  0001 C CNN
+	1    4650 1850
+	1    0    0    -1  
+$EndComp
+$Comp
+L GND #PWR?
+U 1 1 59ED9DE4
+P 4650 2450
+F 0 "#PWR?" H 4650 2200 50  0001 C CNN
+F 1 "GND" H 4650 2300 50  0000 C CNN
+F 2 "" H 4650 2450 50  0001 C CNN
+F 3 "" H 4650 2450 50  0001 C CNN
+	1    4650 2450
+	1    0    0    -1  
+$EndComp
+$Comp
+L Crystal Y?
+U 1 1 59ED9F2B
+P 4000 1850
+F 0 "Y?" H 4000 2000 50  0000 C CNN
+F 1 "32 kHz" H 4000 1700 50  0000 C CNN
+F 2 "" H 4000 1850 50  0001 C CNN
+F 3 "" H 4000 1850 50  0001 C CNN
+	1    4000 1850
+	0    1    1    0   
+$EndComp
+NoConn ~ 5050 1950
+NoConn ~ 5050 2050
+$Comp
+L DIODES_BAT42_SOD-123 D?
+U 1 1 59EDA477
+P 5000 1200
+F 0 "D?" H 5100 1050 45  0000 L BNN
+F 1 "BAT42" H 4850 1050 45  0000 L BNN
+F 2 "MF_Discrete_Semiconductor_SOD-123" H 5188 1279 20  0001 C CNN
+F 3 "" H 5000 1200 60  0001 C CNN
+	1    5000 1200
+	-1   0    0    1   
+$EndComp
+Wire Wire Line
+	4950 2850 7300 2850
+Wire Wire Line
+	4950 3100 7300 3100
+Wire Wire Line
+	6000 2700 6000 2850
+Connection ~ 6000 2850
+Wire Wire Line
+	6350 2700 6350 3100
+Connection ~ 6350 3100
+Wire Wire Line
+	4950 3500 5100 3500
+Wire Wire Line
+	4950 3850 5100 3850
+Wire Wire Line
+	5500 3500 7300 3500
+Wire Wire Line
+	5500 3850 7300 3850
+Wire Wire Line
+	6350 950  6350 2300
+Wire Wire Line
+	6000 2300 6000 1200
+Wire Wire Line
+	6000 1200 6350 1200
+Connection ~ 6350 1200
+Wire Wire Line
+	4850 2850 4000 2850
+Wire Wire Line
+	4850 3100 4000 3100
+Wire Wire Line
+	4850 3500 4000 3500
+Wire Wire Line
+	4850 3850 4000 3850
+Wire Wire Line
+	4650 1200 4650 1450
+Wire Wire Line
+	4650 2250 4650 2450
+Wire Wire Line
+	5050 1650 5550 1650
+Wire Wire Line
+	5550 1650 5550 3100
+Connection ~ 5550 3100
+Wire Wire Line
+	5050 1750 5300 1750
+Wire Wire Line
+	5300 1750 5300 2850
+Connection ~ 5300 2850
+Wire Wire Line
+	4250 2050 4000 2050
+Wire Wire Line
+	4000 2050 4000 2000
+Wire Wire Line
+	4250 1650 4000 1650
+Wire Wire Line
+	4000 1650 4000 1700
+Wire Wire Line
+	3400 1200 4900 1200
+Wire Wire Line
+	5100 1200 5350 1200
+Wire Wire Line
+	5350 1200 5350 950 
+$Comp
+L +5V #PWR?
+U 1 1 59EDA676
+P 5350 950
+F 0 "#PWR?" H 5350 800 50  0001 C CNN
+F 1 "+5V" H 5350 1090 50  0000 C CNN
+F 2 "" H 5350 950 50  0001 C CNN
+F 3 "" H 5350 950 50  0001 C CNN
+	1    5350 950 
+	1    0    0    -1  
+$EndComp
+$Comp
+L CP C?
+U 1 1 59EDA6A0
+P 3400 2000
+F 0 "C?" H 3425 2100 50  0000 L CNN
+F 1 "0.33F 5.5V" H 3425 1900 50  0000 L CNN
+F 2 "" H 3438 1850 50  0001 C CNN
+F 3 "" H 3400 2000 50  0001 C CNN
+	1    3400 2000
+	1    0    0    -1  
+$EndComp
+$Comp
+L RESISTOR_0805 R?
+U 1 1 59EDA6D7
+P 3400 1550
+F 0 "R?" V 3300 1450 45  0000 L BNN
+F 1 "390" V 3300 1600 45  0000 L BNN
+F 2 "MF_Passives:MF_Passives-R0805" H 3650 1460 20  0001 C CNN
+F 3 "" H 3400 1550 60  0001 C CNN
+	1    3400 1550
+	-1   0    0    1   
+$EndComp
+Wire Wire Line
+	4650 2350 3400 2350
+Wire Wire Line
+	3400 2350 3400 2150
+Connection ~ 4650 2350
+Wire Wire Line
+	3400 1850 3400 1750
+Wire Wire Line
+	3400 1350 3400 1200
+Connection ~ 4650 1200
+$EndSCHEMATC
