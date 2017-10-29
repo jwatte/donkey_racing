@@ -5,8 +5,13 @@ import cv2
 import sys
 
 
-objp = np.zeros((6*8, 3), np.float32)
-objp[:,:2] = np.mgrid[0:8,0:6].T.reshape(-1, 2)
+fisheye = False
+if fisheye:
+    objp = np.zeros((1, 6*8, 3), np.float64)
+    objp[0,:,:2] = np.mgrid[0:8,0:6].T.reshape(-1, 2)
+else:
+    objp = np.zeros((6*8, 3), np.float32)
+    objp[:,:2] = np.mgrid[0:8,0:6].T.reshape(-1, 2)
 objpoints = []
 imgpoints = []
 
@@ -36,15 +41,38 @@ for i in images:
 
 print("Loaded %d images; calibrating" % (len(images),))
 
-ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],
-            None, flags=cv2.CALIB_USE_INTRINSIC_GUESS)
+Kout = np.zeros((3, 3))
+Dout = np.zeros((4,))
 h, w = im.shape[:2]
-newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
-print("roi=" + repr(roi) + "; newcameramtx=" + repr(newcameramtx))
-if (roi[2] == 0) or (roi[3] == 0):
+if fisheye:
+    #imgpoints = [x.reshape(-1, 2) for x in imgpoints]
+    #print(repr(imgpoints))
+    num = len(imgpoints)
+    chessboard_model = objpoints
+    rvecs = [np.zeros((1, 1, 3), dtype=np.float64) for i in range(num)]
+    tvecs = [np.zeros((1, 1, 3), dtype=np.float64) for i in range(num)]
+    ret, Kmtx, Ddist, rvecs, tvecs = cv2.omnidir.calibrate(
+            chessboard_model, imgpoints, (w, h),
+                Kout, Dout, flags=cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC+cv2.fisheye.CALIB_FIX_SKEW)
+    Pnewcameramtx = cv2.omnidir.estimateNewCameraMatrixForUndistortRectify(
+            Kmtx, Ddist, (h, w), None)
     roi = (0, 0, w, h)
+    #print(Kout)
+    #print(Ddist)
+    print("Kmtx=" + repr(Kmtx) + "\nDdist=" + repr(Ddist))
+    print("roi=" + repr(roi) + "\nnewcameramtx=" + repr(Pnewcameramtx))
+    mapx, mapy = cv2.fisheye.initUndistortRectifyMap(Kmtx, Ddist,
+            np.array([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]]),
+            Pnewcameramtx, (w, h), cv2.CV_32FC1)
+else:
+    ret, Kmtx, Ddist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],
+                Kout, Dout, flags=0)
+    Pnewcameramtx, roi = cv2.getOptimalNewCameraMatrix(Kmtx, Ddist, (h, w), 1, (h, w))
+    print("roi=" + repr(roi) + "\nnewcameramtx=" + repr(Pnewcameramtx))
+    if (roi[2] == 0) or (roi[3] == 0):
+        roi = (0, 0, w, h)
+    mapx, mapy = cv2.initUndistortRectifyMap(Kmtx, Ddist, None, Pnewcameramtx, (w, h), 5)
 
-mapx, mapy = cv2.initUndistortRectifyMap(mtx, dist, None, newcameramtx, (w, h), 5)
 x, y, w, h = roi
 
 print("Saving parameters to calibrate.pkl")
@@ -56,7 +84,7 @@ dst = cv2.remap(im, mapx, mapy, cv2.INTER_LINEAR)
 x, y, w, h = roi
 print("roi="+repr(roi))
 #dst = dst[y:h+h, x:x+w] # crop
-cv2.rectangle(dst, (x,y), (x+w,y+h), (255,0,255), 1)
+cv2.rectangle(dst, (x,y), (x+w-1,y+h-1), (255,0,255), 1)
 cv2.imshow('rectified', dst)
 cv2.waitKey(30000)
 cv2.destroyAllWindows()
