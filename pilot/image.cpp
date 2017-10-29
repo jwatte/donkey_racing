@@ -52,7 +52,7 @@ static inline float sample_yuv(unsigned char const *y, unsigned char const *u, u
     int ux = xc / 2;
     float uu = u[uy * (SOURCE_WIDTH/2) + ux]-128;
     float vv = v[ux]-128;
-    return munge(255 + yy*1.5f - (fabsf(yy-CENTER_Y) + fabsf(uu-CENTER_U) + fabsf(vv-CENTER_V)) * 0.65f) * BYTE_TO_FLOAT;
+    return munge(255 - (fabsf(yy-CENTER_Y) + fabsf(uu-CENTER_U) + fabsf(vv-CENTER_V)) * 0.65f) * BYTE_TO_FLOAT;
 }
 
 static inline float sample_y(unsigned char const *y, TableInputCoord const tic) {

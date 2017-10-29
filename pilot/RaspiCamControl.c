@@ -729,26 +729,6 @@ int raspicamcontrol_set_exposure_compensation(MMAL_COMPONENT_T *camera, int exp_
 }
 
 
-/**
- * Set exposure mode for images
- * @param camera Pointer to camera component
- * @param mode Exposure mode to set from
- *   - MMAL_PARAM_EXPOSUREMODE_OFF,
- *   - MMAL_PARAM_EXPOSUREMODE_AUTO,
- *   - MMAL_PARAM_EXPOSUREMODE_NIGHT,
- *   - MMAL_PARAM_EXPOSUREMODE_NIGHTPREVIEW,
- *   - MMAL_PARAM_EXPOSUREMODE_BACKLIGHT,
- *   - MMAL_PARAM_EXPOSUREMODE_SPOTLIGHT,
- *   - MMAL_PARAM_EXPOSUREMODE_SPORTS,
- *   - MMAL_PARAM_EXPOSUREMODE_SNOW,
- *   - MMAL_PARAM_EXPOSUREMODE_BEACH,
- *   - MMAL_PARAM_EXPOSUREMODE_VERYLONG,
- *   - MMAL_PARAM_EXPOSUREMODE_FIXEDFPS,
- *   - MMAL_PARAM_EXPOSUREMODE_ANTISHAKE,
- *   - MMAL_PARAM_EXPOSUREMODE_FIREWORKS,
- *
- * @return 0 if successful, non-zero if any parameters out of range
- */
 int raspicamcontrol_set_exposure_mode(MMAL_COMPONENT_T *camera, MMAL_PARAM_EXPOSUREMODE_T mode)
 {
    MMAL_PARAMETER_EXPOSUREMODE_T exp_mode = {{MMAL_PARAMETER_EXPOSURE_MODE,sizeof(exp_mode)}, mode};

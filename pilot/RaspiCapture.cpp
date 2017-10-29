@@ -1210,10 +1210,14 @@ int setup_capture(CaptureParams const *cp)
     state.camera_parameters.awb_gains_b = bgain;
     state.camera_parameters.flickerAvoidMode = MMAL_PARAM_FLICKERAVOID_60HZ;
     state.camera_parameters.exposureMode = MMAL_PARAM_EXPOSUREMODE_ANTISHAKE;
+    //  TODO: REMOVEME
     state.camera_parameters.exposureMeterMode = MMAL_PARAM_EXPOSUREMETERINGMODE_MATRIX;
+    state.camera_parameters.exposureMeterMode = MMAL_PARAM_EXPOSUREMETERINGMODE_SPOT;
     state.camera_parameters.drc_level = MMAL_PARAMETER_DRC_STRENGTH_OFF;
     state.camera_parameters.videoStabilisation = 1;
+    //  TODO: REMOVEME
     state.camera_parameters.shutter_speed = 8000;   //  microseconds
+    state.camera_parameters.shutter_speed = 4000;   //  microseconds
     state.width = gparams.width;
     state.height = gparams.height;
     state.bitrate = 0; //8000000;
