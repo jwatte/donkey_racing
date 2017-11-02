@@ -33,6 +33,8 @@ def samplexy(xmap, ymap, x, y):
     y10=ymap[yi+1,xi]
     y11=ymap[yi+1,xi+1]
     yret=(y00*(1-xf)+y01*xf)*(1-yf)+(y10*(1-xf)+y11*xf)*yf
+    #print("x=%r,y=%r,xret=%r,yret=%r,x00=%r,x01=%r,x10=%r,x11=%r" %
+    #        (x, y, xret, yret, x00, x01, x10, x11))
     return xret,yret
 
 
@@ -87,13 +89,13 @@ with open('table.cpp', 'wb') as cppfile:
             xval, ok=localcrop.sq_xpos(ypos, xpos)
             xval = xval + owidth/2
             if ok:
-                xval, yval=samplexy(fullx, fully, xval, yval)
+                xres, yres=samplexy(fullx, fully, xval, yval)
             else:
-                xval=0
-                yval=0
-            cppfile.write("{ %.2f, %.2f }, /* %.1f,%.1f  %.1f,%.1f  %d */\n" % (yval, xval, yy, xx, ypos, xpos, ok))
-            xm.append(xval)
-            ym.append(yval)
+                xres=0
+                yres=0
+            cppfile.write("{ %.2f, %.2f }, " % (yres, xres))
+            xm.append(xres)
+            ym.append(yres)
             n += 1
         cppfile.write("}, /* end row %d */\n" % (yy,))
         oxmap.append(xm)
