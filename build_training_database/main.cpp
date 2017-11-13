@@ -506,17 +506,11 @@ void end_database_write() {
 
 void put_to_database2(unsigned char const *frame, float const *label) {
     ++databaseKeyIndex;
-    if (stretch_random() < testFraction) {
-        q += write(testfds[1], "w", 1);
-        q += write(testfds[1], &databaseKeyIndex, sizeof(databaseKeyIndex));
-        q += write(testfds[1], label, 8);
-        q += write(testfds[1], frame, outputsize);
-    } else {
-        q += write(trainfds[1], "w", 1);
-        q += write(trainfds[1], &databaseKeyIndex, sizeof(databaseKeyIndex));
-        q += write(trainfds[1], label, 8);
-        q += write(trainfds[1], frame, outputsize);
-    }
+    int fdw = (stretch_random() < testFraction) ? testfds[1] : trainfds[1];
+    q += write(fdw, "w", 1);
+    q += write(fdw, &databaseKeyIndex, sizeof(databaseKeyIndex));
+    q += write(fdw, label, 8);
+    q += write(fdw, frame, outputsize);
 }
 
 unsigned char *flipbuf = 0;
@@ -803,6 +797,22 @@ bool check_thresh_hor(unsigned char const *img, unsigned char thresh, int width,
     return nvote >= floor(ow * 0.8 + 1);
 }
 
+//  This tests for the approximate shape of blinders on the bottom left/right because of 
+//  the top-down projection from a fisheye camrea.
+bool inbadarea(int x, int y, int w, int h) {
+    int h23 = h * 2 / 3;
+    if (y < h23) {
+        return false;
+    }
+    if (x < y-h23) {
+        return true;
+    }
+    if (w-x < y-h23) {
+        return true;
+    }
+    return false;
+}
+
 void detect_cars(unsigned char const *img, unsigned char *annotate, unsigned char thresh, int width, int height, double *oprob, double *osteer)
 {
     double carx[20] = { 0.0 };
@@ -828,6 +838,9 @@ void detect_cars(unsigned char const *img, unsigned char *annotate, unsigned cha
                 int ytop = y;
                 int xwidth = 1;
                 int yheight = 1;
+                if (inbadarea(x, y, width, height)) {
+                    going = false;
+                }
                 while (going) {
                     going = false;
                     if (xleft + xwidth < width && xwidth < maxwidth && check_thresh_vert(img, thresh + 16, width, xleft+xwidth, ytop, yheight)) {
@@ -847,6 +860,9 @@ void detect_cars(unsigned char const *img, unsigned char *annotate, unsigned cha
                         ytop -= 1;
                         yheight += 1;
                         going = true;
+                    }
+                    if (inbadarea(xleft+xwidth, ytop+yheight, width, height)) {
+                        going = false;
                     }
                 }
                 if (xwidth > width * 0.1 && yheight > height * 0.1) {
@@ -1066,6 +1082,7 @@ void compute_labels_cv(
         //  vote for whether to turn left/right
         if (counts[i]) {
             double straight = atan2(-xavg[i], yavg[i] + 54.0);  //  where is the horizon?
+            straight = 0;   //  for top-down projection
             double strength = (10 + sqrt(counts[i])) / (10.0 + yavg[i] + oph/2); //  magic constant!
             double clusterdir = calc_cluster_dir(
                     cl_temp, opw, i,

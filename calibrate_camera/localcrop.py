@@ -1,7 +1,7 @@
 import math
 
-#x = 104 # leaves 444 pixels in center
-x = 72  # leaves 496 pixels in center
+x = 104 # leaves 444 pixels in center
+#x = 72  # leaves 496 pixels in center
 y = 94  # 12 cm ahead of camera center
         # at bottom, 444 pixels in center crosses 6*9 = 54 centimeters
 w = 640-2*x
@@ -28,10 +28,10 @@ s_toppx=(480-s_heightpx)/2
 s_camheightcm=25.0
 # s_centerangledeg=22.5 -- calculated as s_calcangledeg
 s_frontatbottomcm=12.0
-#s_widthatbottomcm=54.0
-s_widthatbottomcm=70.0
-#s_frontatcentercm=76.0  # calculated, this would be 62 cm at 22.5 deg; this is from measurement
-s_frontatcentercm=62.0
+s_widthatbottomcm=54.0
+#s_widthatbottomcm=58.0
+#s_frontatcentercm=62.0
+s_frontatcentercm=58.0  # calculated, this would be 62 cm at 22.5 deg; this is from measurement
 
 # derived values
 s_disttobottomcm=math.sqrt(s_camheightcm*s_camheightcm+s_frontatbottomcm*s_frontatbottomcm)
@@ -44,7 +44,7 @@ s_hfrontmulpx=s_widthpx/2.0/math.tan(rad(s_hfovhdeg))
 
 def sq_ypos(fcm):
     f_updeg=deg(math.atan(fcm/s_camheightcm))
-    f_down=90.0-s_calcangledeg-f_updeg
+    f_down=(90.0-s_calcangledeg)-f_updeg
     f_tandown=math.tan(rad(f_down))
     f_ret=s_vfrontmulpx*f_tandown+480/2.0
     f_ok=(f_ret>=s_toppx and f_ret<=s_toppx+s_heightpx)
@@ -52,8 +52,10 @@ def sq_ypos(fcm):
     
 def sq_xpos(fcm,dxcm):
     f_dist=math.sqrt(fcm*fcm+s_camheightcm*s_camheightcm)
-    f_tanright=math.tan(dxcm/f_dist)
-    f_ret=s_hfrontmulpx*f_tanright+640/2.0
+    f_rtscale=dxcm/f_dist
+    #f_rightdeg=math.atan(rtscale)
+    #f_tanright=math.tan(f_rightdeg)
+    f_ret=s_hfrontmulpx*f_rtscale+640/2.0
     f_ok=(f_ret>=s_leftpx and f_ret<=s_widthpx+s_leftpx)
     return f_ret, f_ok
 

@@ -95,8 +95,8 @@ with open('table.cpp', 'wb') as cppfile:
             if ok:
                 xres, yres=samplexy(fullx, fully, xval, yval)
             else:
-                xres=-1
-                yres=-1
+                xres=0
+                yres=0
             cppfile.write("{ %.2f, %.2f }, " % (yres, xres))
             xm.append(xres)
             ym.append(yres)

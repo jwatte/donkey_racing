@@ -100,9 +100,46 @@ def AddNetModel_5(model, data):
     output = brew.fc(model, relu13, 'output', dim_in=8, dim_out=2)
     return output
 
+def AddNetModel_6(model, data):
+    # 0 params, dims [1, 142, 142]
+    input1 = data
+    # 72 params, dims [8, 140, 140]
+    conv2 = brew.conv(model, input1, 'conv2', dim_in=1, dim_out=8, kernel=3, stride=1)
+    # 0 params, dims [8, 140, 140]
+    relu3 = brew.relu(model, conv2, 'relu3')
+    # 128 params, dims [4, 70, 70]
+    conv4 = brew.conv(model, relu3, 'conv4', dim_in=8, dim_out=4, kernel=2, stride=2)
+    # 576 params, dims [16, 68, 68]
+    conv5 = brew.conv(model, conv4, 'conv5', dim_in=4, dim_out=16, kernel=3, stride=1)
+    # 0 params, dims [16, 68, 68]
+    relu6 = brew.relu(model, conv5, 'relu6')
+    # 512 params, dims [8, 34, 34]
+    conv7 = brew.conv(model, relu6, 'conv7', dim_in=16, dim_out=8, kernel=2, stride=2)
+    # 2304 params, dims [32, 32, 32]
+    conv8 = brew.conv(model, conv7, 'conv8', dim_in=8, dim_out=32, kernel=3, stride=1)
+    # 0 params, dims [32, 32, 32]
+    relu9 = brew.relu(model, conv8, 'relu9')
+    # 2048 params, dims [16, 16, 16]
+    conv10 = brew.conv(model, relu9, 'conv10', dim_in=32, dim_out=16, kernel=2, stride=2)
+    # 9216 params, dims [64, 14, 14]
+    conv11 = brew.conv(model, conv10, 'conv11', dim_in=16, dim_out=64, kernel=3, stride=1)
+    # 0 params, dims [64, 14, 14]
+    relu12 = brew.relu(model, conv11, 'relu12')
+    # 4096 params, dims [16, 7, 7]
+    conv13 = brew.conv(model, relu12, 'conv13', dim_in=64, dim_out=16, kernel=2, stride=2)
+    # 0 params, dims [16, 7, 7]
+    relu14 = brew.relu(model, conv13, 'relu14')
+    # 150528 params, dims [192]
+    fc15 = brew.fc(model, relu14, 'fc15', dim_in=784, dim_out=192)
+    # 0 params, dims [192]
+    relu16 = brew.relu(model, fc15, 'relu16')
+    # 384 params, dims [2]
+    output = brew.fc(model, relu16, 'output', dim_in=192, dim_out=2)
+    # 169864 parameters total
+    return output
 
 def AddNetModel(model, data):
-    return AddNetModel_3(model, data)
+    return AddNetModel_6(model, data)
 
 def AddTrainingOperators(model, output, label):
     loss = model.SquaredL2Distance([output, label], "loss")
