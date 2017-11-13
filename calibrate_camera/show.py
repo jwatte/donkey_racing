@@ -13,7 +13,6 @@ else:
     src = cv2.imread(sys.argv[1])
 rec = rectify.Rectify()
 dst = rec.rectify(src)
-x, y, w, h = (cdata['x'], cdata['y'], cdata['w'], cdata['h'])
 # override for ROI
 (x, y, w, h, yoffset) = localcrop.params()
 # only the bottom half of the image is interesting

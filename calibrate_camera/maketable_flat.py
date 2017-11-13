@@ -76,9 +76,12 @@ with open('table.cpp', 'wb') as cppfile:
     oymap=[]
     for yy in range(0, oheight):
         n = 0
-        ypos=yy*sq_cm+y_offset_cm
-        yval=localcrop.sq_ypos(ypos)
-        cppfile.write("/* row %d */ { " % (yy,))
+        ypos=(oheight-yy-1)*sq_cm+y_offset_cm
+        yval, yok=localcrop.sq_ypos(ypos)
+        word="ok"
+        if not yok:
+            word="out"
+        cppfile.write("/* row %d (%s) */ { " % (yy,word))
         xm=[]
         ym=[]
         for xx in range(0, owidth):
@@ -86,13 +89,14 @@ with open('table.cpp', 'wb') as cppfile:
                 cppfile.write("\n   ")
                 n = 0
             xpos=xx*sq_cm-(owidth*sq_cm/2)
-            xval, ok=localcrop.sq_xpos(ypos, xpos)
-            xval = xval + owidth/2
+            ok=yok
+            if ok:
+                xval, ok=localcrop.sq_xpos(ypos, xpos)
             if ok:
                 xres, yres=samplexy(fullx, fully, xval, yval)
             else:
-                xres=0
-                yres=0
+                xres=-1
+                yres=-1
             cppfile.write("{ %.2f, %.2f }, " % (yres, xres))
             xm.append(xres)
             ym.append(yres)
