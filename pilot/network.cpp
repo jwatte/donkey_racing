@@ -24,7 +24,7 @@
 #include <caffe2/operators/relu_op.h>
 
 
-#define NETWORK_VARIANT 3
+#define NETWORK_VARIANT 6
 
 static FrameQueue *networkInput;
 static Pipeline *networkPipeline;
@@ -265,6 +265,37 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vecto
     FC  ("fc5",   "relu4", 21*7*10, 32);
     RELU("relu5", "fc5",   32);
     FC  ("output","relu5", 32, 2);
+#endif
+#if NETWORK_VARIANT == 6
+    assert(!ret);
+    ret = true;
+    //  Some LeNet / SqueezeNet / WatteNet hybrid
+    CONV("conv2", "input", 3, 1, 1, 8);
+    RELU("relu3", "conv2", 8);
+    //  Replace "squeeze" and "max_pool" layers with "relu" and "convolve/squeeze."
+    //  The end result is that I have 2x2 pixels in, each with 8 outputs from a 3x3 convolution.
+    //  I end up collapsing that down to a 4-output by doing Relu and 2x2x8->4 convolution.
+    //  There's a problem here in that images off by one pixel may end up mattering. Maybe a 
+    //  better way would be to squeeze 1x1x8->4 and then max-pool?
+    CONV("conv4", "relu3", 2, 2, 8, 4);
+    CONV("conv5", "conv4", 5, 1, 4, 16);
+    RELU("relu6", "conv5", 16);
+    //  Squeeze 64->8
+    CONV("conv7", "relu6", 2, 2, 16, 8);
+    CONV("conv8", "conv7", 3, 1, 8, 32);
+    RELU("relu9", "conv8", 32);
+    //  Squeeze 128->16
+    CONV("conv10", "relu9", 2, 2, 32, 16);
+    CONV("conv11", "conv10", 3, 1, 16, 64);
+    RELU("relu12", "conv11", 64);
+    //  Squeeze 256->32
+    CONV("conv13", "relu12", 2, 2, 64, 32);
+    RELU("relu14", "conv13", 32);
+    //  fully connected 7x7x32->192
+    FC  ("fc15", "relu14", 1568, 192);
+    RELU("relu16", "fc15", 192);
+    //  fully connected 192->2
+    FC  ("output", "relu16", 192, 2);
 #endif
 
     return ret;

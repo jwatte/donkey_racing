@@ -32,7 +32,8 @@
 bool verbose = false;
 int inputfd = 0;
 
-int outputwidth = 182, outputheight = 70, outputplanes = 1;
+//int outputwidth = 182, outputheight = 70, outputplanes = 1;
+int outputwidth = 146, outputheight = 146, outputplanes = 1;
 int outputsize;
 unsigned char *outputframe;
 

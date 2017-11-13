@@ -13,9 +13,10 @@ import caffe2.python.predictor.predictor_py_utils as pred_utils
 from caffe2.python.predictor_constants import predictor_constants as pc
 from caffe2.proto import caffe2_pb2
 
-BATCH_SIZE=32
-LEARN_RATE=-0.01
-train_iters=100000
+BATCH_SIZE=64
+LEARN_RATE=-0.005
+train_iters=500000
+#LEARN_RATE=-0.001
 #train_iters=50000
 iter_val=0
 
@@ -101,16 +102,16 @@ def AddNetModel_5(model, data):
     return output
 
 def AddNetModel_6(model, data):
-    # 0 params, dims [1, 142, 142]
+    # 0 params, dims [1, 146, 146]
     input1 = data
-    # 72 params, dims [8, 140, 140]
+    # 72 params, dims [8, 144, 144]
     conv2 = brew.conv(model, input1, 'conv2', dim_in=1, dim_out=8, kernel=3, stride=1)
-    # 0 params, dims [8, 140, 140]
+    # 0 params, dims [8, 144, 144]
     relu3 = brew.relu(model, conv2, 'relu3')
-    # 128 params, dims [4, 70, 70]
+    # 128 params, dims [4, 72, 72]
     conv4 = brew.conv(model, relu3, 'conv4', dim_in=8, dim_out=4, kernel=2, stride=2)
-    # 576 params, dims [16, 68, 68]
-    conv5 = brew.conv(model, conv4, 'conv5', dim_in=4, dim_out=16, kernel=3, stride=1)
+    # 1600 params, dims [16, 68, 68]
+    conv5 = brew.conv(model, conv4, 'conv5', dim_in=4, dim_out=16, kernel=5, stride=1)
     # 0 params, dims [16, 68, 68]
     relu6 = brew.relu(model, conv5, 'relu6')
     # 512 params, dims [8, 34, 34]
@@ -125,17 +126,17 @@ def AddNetModel_6(model, data):
     conv11 = brew.conv(model, conv10, 'conv11', dim_in=16, dim_out=64, kernel=3, stride=1)
     # 0 params, dims [64, 14, 14]
     relu12 = brew.relu(model, conv11, 'relu12')
-    # 4096 params, dims [16, 7, 7]
-    conv13 = brew.conv(model, relu12, 'conv13', dim_in=64, dim_out=16, kernel=2, stride=2)
-    # 0 params, dims [16, 7, 7]
+    # 8192 params, dims [32, 7, 7]
+    conv13 = brew.conv(model, relu12, 'conv13', dim_in=64, dim_out=32, kernel=2, stride=2)
+    # 0 params, dims [32, 7, 7]
     relu14 = brew.relu(model, conv13, 'relu14')
-    # 150528 params, dims [192]
-    fc15 = brew.fc(model, relu14, 'fc15', dim_in=784, dim_out=192)
+    # 301056 params, dims [192]
+    fc15 = brew.fc(model, relu14, 'fc15', dim_in=1568, dim_out=192)
     # 0 params, dims [192]
     relu16 = brew.relu(model, fc15, 'relu16')
     # 384 params, dims [2]
     output = brew.fc(model, relu16, 'output', dim_in=192, dim_out=2)
-    # 169864 parameters total
+    # 325512 parameters total
     return output
 
 def AddNetModel(model, data):

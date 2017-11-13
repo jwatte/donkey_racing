@@ -20,7 +20,7 @@ training = True
 
 load_checkpoint=None
 load_trained=None
-load_trained="load_trained_3.crunk"
+load_trained="load_trained_6.crunk"
 
 if len(sys.argv) > 1:
     try:
@@ -103,9 +103,10 @@ def add_noise():
         if is_param_name(p):
             b = workspace.FetchBlob(p)
             rand = np.random.rand(*b.shape).astype(np.float32)
-            rand = np.add(rand, -0.5)
-            b = np.multiply(b, 0.5)
-            b = np.add(b, rand)
+            rand += -0.5
+            rand *= 0.1
+            b *= 0.95
+            b += rand
             workspace.FeedBlob(p, b, device_opts)
             print("Added noise to " + p)
             sys.stderr.write("Added noise to " + p + "\n")
@@ -119,6 +120,9 @@ def init_random():
             rand = np.random.rand(*b.shape).astype(np.float32)
             rand = np.add(rand, -0.5)
             workspace.FeedBlob(p, rand, device_opts)
+
+INPUT_HEIGHT=146
+INPUT_WIDTH=146
 
 if training:
     with open('training.log', 'w') as logfile:
@@ -159,12 +163,12 @@ if training:
                 nstraight = sum((abs(x-avg) < 0.02) for x in outputs)
                 if nstraight == len(outputs):
                     numstraight += 1
-                    print("\nepoch " + str(i) + " steering averages at: " + str(avg))
+                    print("\niteration " + str(i) + " steering averages at: " + str(avg))
                 else:
                     numstraight = 0
-                if numstraight > 9:
-                    logfile.write("\nten epochs with straight-ahead steering in a row -- adding noise!\n")
-                    print("\nten epochs with straight-ahead steering in a row -- adding noise!")
+                if numstraight > 19:
+                    logfile.write("\ntwenty iteration with straight-ahead steering in a row -- adding noise!\n")
+                    print("\ntwenty iteration with straight-ahead steering in a row -- adding noise!")
                     add_noise()
                     numstraight = 0
                 sys.stderr.write("iter %7d loss %8.6f lr %8.6f speed %6.2f remain %7.2f   steer %5.2f label %5.2f  nstraight %3d        \r" %
@@ -197,7 +201,7 @@ if training:
         print('exception while saving model:\n' + traceback.format_exc())
     print(loss)
 else:
-    a = np.zeros((1,1,182,70), np.float32)
+    a = np.zeros((1,1,INPUT_HEIGHT,INPUT_WIDTH), np.float32)
     a[0][0][100][30] = 1.0
     a[0][0][50][30] = 1.0
     a[0][0][100][20] = 1.0

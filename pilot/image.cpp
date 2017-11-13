@@ -85,7 +85,7 @@ void unwarp_image(void const *src, void *dst) {
     TableInputCoord const *ticp = &sTableInputCoords[0][0];
     for (int yy = 0; yy < RECTIFIED_HEIGHT; ++yy) {
         for (int xx = 0; xx < RECTIFIED_WIDTH; ++xx) {
-            if (ticp->sx <= 0) {
+            if (ticp->sx <= 0 || ticp->sy <= 0) {
                 *dp1++ = 0;
             } else {
                 float dp1v = sample_yuv(y, u, v, *ticp);
@@ -112,8 +112,12 @@ void unwarp_transformed_bytes(void const *yp, void const *up, void const *vp, fl
     for (int yy = 0; yy < RECTIFIED_HEIGHT; ++yy) {
         for (int xx = 0; xx < RECTIFIED_WIDTH; ++xx) {
             TableInputCoord tic = transform(mat3x2, *ticp);
-            float dp1v = sample_y(y, tic);
-            *dp1++ = (unsigned char)(FLOAT_TO_BYTE * dp1v);
+            if (tic.sx <= 0 || tic.sx >= 640 || tic.sy <= 0 || tic.sy >= 480) {
+                *dp1++ = 0;
+            } else {
+                float dp1v = sample_y(y, tic);
+                *dp1++ = (unsigned char)(FLOAT_TO_BYTE * dp1v);
+            }
             ++ticp;
         }
     }
