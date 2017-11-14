@@ -210,11 +210,17 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vecto
 
     vector<TIndex> sz;
 
+    size_t w_sz = 0;
+    int w_width = 0;
+    int w_height = 0;
+    int w_planes = 0;
+    get_unwarp_info(&w_sz, &w_width, &w_height, &w_planes);
+
     input = wks->CreateBlob("input");
     sz.push_back(1);
-    sz.push_back(1);
-    sz.push_back(70);
-    sz.push_back(182);
+    sz.push_back(w_planes);
+    sz.push_back(w_height);
+    sz.push_back(w_width);
     Tensor<CPUContext> *it = new Tensor<CPUContext>(sz);
     input->Reset(it);
 
@@ -313,8 +319,6 @@ bool load_network(char const *name, FrameQueue *output) {
         int width, height, planes;
         get_unwarp_info(&size, &width, &height, &planes);
         assert(planes == 1);
-        assert(width == 182);
-        assert(height == 70);
 
         if (!load_network_db(name)) {
             gNetworkFailed = true;

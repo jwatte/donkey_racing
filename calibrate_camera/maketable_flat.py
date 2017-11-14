@@ -11,7 +11,7 @@ fully = cdata['mapy']
 
 owidth=146
 oheight=146
-sq_cm=1.0
+sq_cm=1.3
 y_offset_cm=20.0
 
 def samplexy(xmap, ymap, x, y):
