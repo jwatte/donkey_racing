@@ -155,12 +155,12 @@ void loop() {
       }
     }
     // TODO REMOVEME
-    if (fsValues[6] < 1400) {
+    if (fsValues[6] < 1300) {
       if (sendThrottle > 1540) sendThrottle = 1540;
       if (sendThrottle < 1430) sendThrottle = 1430;
-    } else if (fsValues[6] < 1600) {
+    } else if (fsValues[6] < 1700) {
       if (sendThrottle > 1580) sendThrottle = 1580;
-      if (sendThrottle < 1410) sendThrottle = 1410;
+      if (sendThrottle < 1430) sendThrottle = 1430;
     }
     carSteer.writeMicroseconds(map_polarity(sendSteer, STEER_INVERT));
     carThrottle.writeMicroseconds(sendThrottle);

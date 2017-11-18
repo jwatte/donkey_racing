@@ -133,6 +133,7 @@ bool load_network_db(char const *name) {
                     return false;
                 } else {
                     networkBlobs[key] = value;
+                    fprintf(stderr, "layer %s %s", key.c_str(), info.c_str());
                 }
             }
         }
