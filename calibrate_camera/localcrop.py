@@ -23,6 +23,8 @@ s_widthpx=w
 s_leftpx=(640-s_widthpx)/2
 s_heightpx=h
 s_toppx=(480-s_heightpx)/2
+s_slope=0.0
+s_slopescale=1.0
 
 # measurements from camera placement
 s_camheightcm=25.0
@@ -45,9 +47,11 @@ s_hfrontmulpx=s_widthpx/2.0/math.tan(rad(s_hfovhdeg))
 def sq_ypos(fcm):
     f_updeg=deg(math.atan(fcm/s_camheightcm))
     f_down=(90.0-s_calcangledeg)-f_updeg
-    f_tandown=math.tan(rad(f_down))
+    f_x=math.tan(rad(f_down))*s_slopescale
+    f_tandown = (-s_slope * f_x * f_x + f_x + s_slope)/s_slopescale
     f_ret=s_vfrontmulpx*f_tandown+480/2.0
     f_ok=(f_ret>=s_toppx and f_ret<=s_toppx+s_heightpx)
+    print('fcm=%.1f down=%.1f tan=%.2f ret=%.1f' % (fcm, f_down, f_tandown, f_ret))
     return f_ret, f_ok
     
 def sq_xpos(fcm,dxcm):

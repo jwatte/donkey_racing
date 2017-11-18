@@ -14,10 +14,12 @@ from caffe2.python.predictor_constants import predictor_constants as pc
 from caffe2.proto import caffe2_pb2
 
 BATCH_SIZE=64
-LEARN_RATE=-0.005
-train_iters=500000
-#LEARN_RATE=-0.001
-#train_iters=50000
+# for base training
+#LEARN_RATE=-0.005
+#train_iters=500000
+# for re-training
+LEARN_RATE=-0.001
+train_iters=50000
 iter_val=0
 
 #root_folder = "/home/jwatte/trainingdata/donkey_racing/network"

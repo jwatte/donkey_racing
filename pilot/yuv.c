@@ -6,6 +6,17 @@ static inline unsigned char cl255(float f) {
     return (unsigned char)f;
 }
 
+YUV_EXTERN void yuv_comp_to_rgb(unsigned char y, unsigned char u, unsigned char v, unsigned char *rgb) {
+    float b = y;
+    float va = v *  1.140;
+    float vb = v * -0.581;
+    float ub = u * -0.395;
+    float uc = u *  2.032;
+    rgb[0] = cl255(b + va     );
+    rgb[1] = cl255(b + vb + ub);
+    rgb[2] = cl255(b      + uc);
+}
+
 void yuv_to_rgb(unsigned char const *yuv, unsigned char *rgb, int xs, int ys) {
 
     unsigned char const *u = yuv + xs * ys;

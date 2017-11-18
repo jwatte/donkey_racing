@@ -40,6 +40,7 @@ extern "C" {
 #include <caffe2/core/logging.h>
 
 #include "../stb/stb_image_write.h"
+#include "cone.h"
 
 
 #define MIN_CLUSTER_SIZE 18
@@ -51,6 +52,8 @@ bool dumppng = true;
 bool fakedata = false;
 bool output_as_streams = false;
 bool computelabels = false;
+bool withcones = false;
+bool printcones = false;
 float scaleSteer = 1.0f;
 float scaleThrottle = 1.0f;
 long skip = 0;
@@ -1185,6 +1188,14 @@ void database_frame(
     float label[2] = { steer, throttle };
     if (computelabels) {
         compute_labels_cv(serial, y, outputframe, label);
+        if (withcones) {
+            static unsigned char *outputrgb;
+            if (!outputrgb) {
+                outputrgb = (unsigned char *)malloc(width * height * 3);
+            }
+            unwarp_transformed_rgb(y, u, v, mat, outputrgb);
+            fixup_cone_labels(outputrgb, width, height, printcones, serial, label);
+        }
     }
     if (devmode) {
         magically_fix_labeling(serial, outputframe, label);
@@ -1561,6 +1572,8 @@ usage:
         fprintf(stderr, "--dumppng\n");
         fprintf(stderr, "--fakedata\n");
         fprintf(stderr, "--computelabels\n");
+        fprintf(stderr, "  --with-cones\n");
+        fprintf(stderr, "    --print-cones\n");
         fprintf(stderr, "--quiet\n");
         fprintf(stderr, "--verbose\n");
         fprintf(stderr, "--output-as-streams\n");
@@ -1687,6 +1700,16 @@ usage:
             if (!strcmp(argv[i], "--computelabels")) {
                 computelabels = true;
                 mkdir("png_test", 0777);
+                continue;
+            }
+
+            if (!strcmp(argv[i], "--with-cones")) {
+                withcones = true;
+                continue;
+            }
+
+            if (!strcmp(argv[i], "--print-cones")) {
+                printcones = true;
                 continue;
             }
 
