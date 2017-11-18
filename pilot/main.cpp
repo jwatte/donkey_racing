@@ -115,19 +115,22 @@ void do_click(int mx, int my, int btn, int st) {
             mx, my, btn, st);
     mousex = mx;
     mousey = my;
-    //  top-right corner
-    if (displayingMenu) {
-        for (MenuItem *m = gMenu; m->func; ++m) {
-            if (mx >= m->left && mx <= m->left + m->width && my >= m->bottom && my <= m->bottom + m->height) {
-                m->func(m, mx - m->left, my - m->bottom);
-                break;
+    if (st) {
+        if (displayingMenu) {
+            for (MenuItem *m = gMenu; m->func; ++m) {
+                if (mx >= m->left && mx <= m->left + m->width && my >= m->bottom && my <= m->bottom + m->height) {
+                    m->func(m, mx - m->left, my - m->bottom);
+                    break;
+                }
             }
+            displayingMenu = false;
+        } else if (btn == 0 && st && mx > 800 && my > 400) {
+            //  top-right corner
+            displayingMenu = true;
         }
-        displayingMenu = false;
-    } else if (btn == 0 && st && mx > 800 && my > 400) {
-        displayingMenu = true;
     }
 }
+
 
 void do_move(int x, int y, unsigned int btns) {
     mousex = x;

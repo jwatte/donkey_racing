@@ -43,7 +43,7 @@ bool read_crunk_block(FILE *f, std::string &okey, std::string &oinfo, float *&ov
         fprintf(stderr, "read_crunk_block(): blob size not found\n");
         return false;
     }
-    if (sz < 4 || sz > 1000000) {
+    if (sz < 4 || sz > 4000000) {
         fprintf(stderr, "read_crunk_block(): blob size out of range\n");
         return false;
     }
@@ -68,7 +68,7 @@ delret:
         fprintf(stderr, "read_crunk_block(): terminator bad format\n");
         goto delret;
     }
-    
+    fprintf(stderr, "%s: %s", okey.c_str(), oinfo.c_str());
     return true;
 }
 

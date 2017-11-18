@@ -202,6 +202,7 @@ OperatorBase *mkfc(Workspace *wks, char const *name, char const *input,
 
 bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vector<OperatorBase *> &net) {
     for (auto const kv : networkBlobs) {
+        fprintf(stderr, "creating blob %s\n", kv.first.c_str());
         Blob *bb = wks->CreateBlob(kv.first);
         Tensor<CPUContext> *t = new Tensor<CPUContext>(blobShapes[kv.first]);
         t->ShareExternalPointer((float *)kv.second);
@@ -302,6 +303,7 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vecto
     RELU("relu16", "fc15", 192);
     //  fully connected 192->2
     FC  ("output", "relu16", 192, 2);
+    fprintf(stderr, "created model 6\n");
 #endif
 
     return ret;
