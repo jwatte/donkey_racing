@@ -1200,6 +1200,7 @@ static void generate_mouse_events(Context *ctx) {
                 cb_mousebutton(ctx->mousex, ctx->mousey, 2, (ctx->mousebuttons & 1) ? 1 : 0);
             }
         }
+        ctx->prevbuttons = ctx->mousebuttons;
     }
 }
 
@@ -1208,6 +1209,11 @@ int gg_setup(unsigned int width, unsigned int height, int left, int top, char co
         return -1;
     }
     return 0;
+}
+
+void gg_get_viewport(int *owidth, int *oheight) {
+    *owidth = gCtx.screen_width;
+    *oheight = gCtx.screen_height;
 }
 
 void gg_onmousemove(void (*mousemovefn)(int x, int y, unsigned int buttons)) {

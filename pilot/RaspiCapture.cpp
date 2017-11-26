@@ -66,7 +66,7 @@ extern "C" {
 
 // Video format information
 // 0 implies variable
-#define VIDEO_FRAME_RATE_NUM 90
+#define VIDEO_FRAME_RATE_NUM 60
 #define VIDEO_FRAME_RATE_DEN 1
 
 /// Video render needs at least 2 buffers.
@@ -615,6 +615,18 @@ static MMAL_STATUS_T create_camera_component(RASPIVID_STATE *state)
         }
     }
 
+    status = mmal_port_parameter_set_boolean(preview_port, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+    if (status != MMAL_SUCCESS) {
+        vcos_log_error("Cannot turn on zero copy for preview");
+        goto error;
+    }
+
+    status = mmal_port_parameter_set_boolean(video_port, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+    if (status != MMAL_SUCCESS) {
+        vcos_log_error("Cannot turn on zero copy for video");
+        goto error;
+    }
+
     // Enable the camera, and tell it its control callback function
     status = mmal_port_enable(camera->control, camera_control_callback);
 
@@ -851,6 +863,11 @@ static MMAL_STATUS_T create_encoder_component(RASPIVID_STATE *state)
 
     encoder_input = encoder->input[0];
     encoder_output = encoder->output[0];
+
+    status = mmal_port_parameter_set_boolean(encoder_output, MMAL_PARAMETER_ZERO_COPY, MMAL_TRUE);
+    if (status != MMAL_SUCCESS) {
+        vcos_log_error("Unable to use zero copy for encoder output");
+    }
 
     // We want same format on input and output
     mmal_format_copy(encoder_output->format, encoder_input->format);

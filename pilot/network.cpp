@@ -26,6 +26,8 @@
 
 #define NETWORK_VARIANT 6
 
+#define PARALLEL_NETWORKS 3
+
 static FrameQueue *networkInput;
 static Pipeline *networkPipeline;
 bool gNetworkFailed;
@@ -33,15 +35,15 @@ bool gNetworkFailed;
 using namespace caffe2;
 
 static bool running_status = true;
-static Workspace gWorkspace[3];
-static Blob *inputs[3];
-static Blob *outputs[3];
-static std::vector<OperatorBase *> nets[3];
+static Workspace gWorkspace[PARALLEL_NETWORKS];
+static Blob *inputs[PARALLEL_NETWORKS];
+static Blob *outputs[PARALLEL_NETWORKS];
+static std::vector<OperatorBase *> nets[PARALLEL_NETWORKS];
 static std::map<std::string, float *> networkBlobs;
 static std::map<std::string, std::vector<TIndex>> blobShapes;
-static uint64_t clocks[3];
-static uint64_t starts[3];
-static int counts[3];
+static uint64_t clocks[PARALLEL_NETWORKS];
+static uint64_t starts[PARALLEL_NETWORKS];
+static int counts[PARALLEL_NETWORKS];
 
 float gSteerAdjust = 0.5f;
 float gThrottleBase = 2.5f;
@@ -59,6 +61,7 @@ static float throttle_adjust(float throttle) {
 
 
 static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *, int index) {
+    assert(index >= 0 && index < PARALLEL_NETWORKS);
     uint64_t start = metric::Collector::clock();
     //  do the thing!
     inputs[index]->GetMutable<Tensor<CPUContext>>()->ShareExternalPointer((float *)src->data_);
@@ -81,10 +84,10 @@ static void process_network(Pipeline *, Frame *&src, Frame *&dst, void *, int in
     clocks[index] += end - start;
     counts[index] += 1;
     if ((counts[index] == 50) || (clocks[index] > 1000000)) {
-        double fps = counts[index] / (starts[index] - end);
+        double fps = counts[index] / (end - starts[index]);
         double msper = clocks[index] / (1000.0 * counts[index]);
         //fprintf(stderr, "\nindex %d avgtime %.1f ms\n", index, msper);
-        Process_NetFps.sample(fps * 3);
+        Process_NetFps.sample(fps * PARALLEL_NETWORKS);
         Process_NetDuration.sample(msper);
         counts[index] = 0;
         clocks[index] = 0;
@@ -326,7 +329,7 @@ bool load_network(char const *name, FrameQueue *output) {
         if (!load_network_db(name)) {
             gNetworkFailed = true;
         } else {
-            for (int i = 0; i != 3; ++i) {
+            for (int i = 0; i != PARALLEL_NETWORKS; ++i) {
                 if (!instantiate_network(&gWorkspace[i], inputs[i], outputs[i], nets[i])) {
                     fprintf(stderr, "Could not create network index %d\n", i);
                     gNetworkFailed = true;
@@ -348,7 +351,7 @@ FrameQueue *network_input_queue() {
 }
 
 void network_start() {
-    networkPipeline->start(NULL, 3);
+    networkPipeline->start(NULL, PARALLEL_NETWORKS);
 }
 
 void network_stop() {

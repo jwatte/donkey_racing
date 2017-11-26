@@ -21,6 +21,8 @@ void gg_run(void (*idlefn)());
 /* set the quit flag so gg_run returns */
 void gg_set_quit_flag();
 
+void gg_get_viewport(int *owidth, int *oheight);
+
 struct Program {
     /* uniforms locations */
     unsigned int vshader;
