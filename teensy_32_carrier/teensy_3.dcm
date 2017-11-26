@@ -1,5 +1,10 @@
 EESchema-DOCLIB  Version 2.0
 #
+$CMP JACK-2PIN
+D Power Connector Barrel Jack, 2 pin
+K power,barrel,jack
+$ENDCMP
+#
 $CMP LMR14050
 D Simple Switcher 40V/5A buck regulator
 K buck,switcher,lmr14050,texas
