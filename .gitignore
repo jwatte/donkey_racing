@@ -30,3 +30,4 @@ build_training_database/mktrain
 build_training_database/build_training_database
 build_training_database/mkdbfromstream
 calc/obj
+teensy_32_v2/macrofab_order_20171126/
