@@ -11,6 +11,9 @@ public:
   bool step(uint32_t now);
   //  Return servo PWM value in microseconds
   uint16_t readChannelUs(uint8_t ch);
+
+  void onRequest2();
+  void onReceive2(int n);
   
   static void onRequest();
   static void onReceive(int n);

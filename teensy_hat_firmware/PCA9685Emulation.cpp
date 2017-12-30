@@ -63,13 +63,18 @@ uint16_t PCA9685Emulator::readChannelUs(uint8_t ch) {
   if ((mem[MODE1] & SLEEP) | !(mem[MODE2] & OUTDRV)) {
     ret = 0;
   } else {
-    ret = ((uint32_t)mem[LED0_ON_L+4*ch] + ((uint32_t)mem[LED0_ON_H+4*ch]<<8)) * (mem[PRESCALE]+1) / 25ul;
+    ret = ((uint32_t)mem[LED0_ON_L+4*ch] + ((uint32_t)mem[LED0_ON_H+4*ch]<<8)) * ((uint32_t)mem[PRESCALE]+1) / 25ul;
   }
   sei();
   return ret;
 }
 
 void PCA9685Emulator::onRequest()
+{
+  active->onRequest2();
+}
+
+void PCA9685Emulator::onRequest2()
 {
   //  only support returning a single byte
   if (wptr < sizeof(mem)) {
@@ -80,6 +85,11 @@ void PCA9685Emulator::onRequest()
 }
 
 void PCA9685Emulator::onReceive(int received)
+{
+  active->onReceive2(received);
+}
+
+void PCA9685Emulator::onReceive2(int received)
 {
   //  Empty the pipe within the interrupt request, to 
   //  make sure I don't race with the step() function.
