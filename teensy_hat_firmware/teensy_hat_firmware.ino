@@ -23,7 +23,10 @@ float minimumVoltage = 6.0f;
 float determinedVoltage = 0.0f;
 uint16_t determinedCount = 0;
 
-char writeBuf[6*10+4];
+// C + CRLF + 0 == 4
+// space + age <= 6
+// space + value <= 6 each times 10 channels
+char writeBuf[6*10+4+6];
 char readBuf[64];
 uint8_t readBufPtr;
 uint16_t serialSteer;
@@ -48,8 +51,12 @@ void setup() {
   svoSteer.attach(PIN_STEER_OUT);
   pinMode(PIN_THROTTLE_OUT, OUTPUT);
   svoThrottle.attach(PIN_THROTTLE_OUT);
+#if defined(POWER_DEVMODE) && POWER_DEVMODE
+  pinMode(PIN_POWER_CONTROL, INPUT_PULLUP);
+#else
   pinMode(PIN_POWER_CONTROL, OUTPUT);
   digitalWrite(PIN_POWER_CONTROL, HIGH);
+#endif
 
   rcSteer.begin();
   rcThrottle.begin();
@@ -105,13 +112,23 @@ void check_voltage(uint32_t now) {
     if (voltage < minimumVoltage) {
       ++numBadVolt;
       if (numBadVolt > NUM_BAD_VOLT_TO_TURN_OFF) {
+#if defined(POWER_DEVMODE) && POWER_DEVMODE
+        pinMode(PIN_POWER_CONTROL, OUTPUT);
+#endif
         digitalWrite(PIN_POWER_CONTROL, LOW);
         numBadVolt = NUM_BAD_VOLT_TO_TURN_OFF;
       }
     } else {
       if (numBadVolt > 0) {
         if (numBadVolt >= NUM_BAD_VOLT_TO_TURN_OFF) {
+          //  I previously pulled power low, but am still running, so 
+          //  presumably I'm being fed power through the non-switched connector.
+          //  Thus, just reset things to "it's good now."
+#if defined(POWER_DEVMODE) && POWER_DEVMODE
+          pinMode(PIN_POWER_CONTROL, INPUT_PULLUP);
+#else
           digitalWrite(PIN_POWER_CONTROL, HIGH);
+#endif
         }
         --numBadVolt;
       }
@@ -247,9 +264,17 @@ uint32_t lastSerialWrite = 0;
 void update_serial(uint32_t now) {
   if (now - lastSerialWrite > 32) {
     lastSerialWrite = now;
-    if (!!RPI_SERIAL && (lastInputTime != 0)) {
+    if (!!RPI_SERIAL) {
       char *wbuf = writeBuf;
-      *wbuf++ = 'C';
+      int d = (int)(now - lastInputTime);
+      if (d > 1000 || d < 0) {
+        strcpy(wbuf, "C -1");
+      } else {
+        *wbuf++ = 'C';
+        *wbuf++ = ' ';
+        itoa(d, wbuf, 10);
+        wbuf += strlen(wbuf);
+      }
       for (int i = 0; i != 10; ++i) {
         *wbuf++ = ' ';
         itoa(iBusInput[i], wbuf, 10);

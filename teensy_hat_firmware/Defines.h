@@ -29,7 +29,7 @@
 #define RPI_SERIAL Serial   //  USB
 #define RPI_BAUD_RATE 115200
 
-#define IBUS_SERIAL Serial2
+#define IBUS_SERIAL Serial1
 
 //  After the last valid input, wait this long before deciding 
 //  that no more inputs will come. (milliseconds)
@@ -45,6 +45,12 @@
 //  how low to let the cells go before turning off
 #define VOLTAGE_PER_CELL 3.2f
 
+//  If POWER_DEVMODE is on, we trust the weak pull-up to keep the 
+//  power FET on, and don't configure power-control as output unless
+//  we want it to explicitly turn off. This allows reliable re-programming
+//  of the Teensy in place. With POWER_DEVMODE off, the Teensy will pull 
+//  the power FET on or off using digital output.
+#define POWER_DEVMODE 1
 
 #endif  //  Defines_h
 
