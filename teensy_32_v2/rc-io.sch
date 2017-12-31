@@ -60,10 +60,10 @@ Comment3 ""
 Comment4 ""
 $EndDescr
 $Comp
-L GND #PWR028
+L GND #PWR030
 U 1 1 59F81478
 P 9150 4300
-F 0 "#PWR028" H 9150 4050 50  0001 C CNN
+F 0 "#PWR030" H 9150 4050 50  0001 C CNN
 F 1 "GND" H 9150 4150 50  0000 C CNN
 F 2 "" H 9150 4300 50  0001 C CNN
 F 3 "" H 9150 4300 50  0001 C CNN
@@ -71,10 +71,10 @@ F 3 "" H 9150 4300 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L +5V #PWR029
+L +5V #PWR031
 U 1 1 59F8151A
 P 7950 2450
-F 0 "#PWR029" H 7950 2300 50  0001 C CNN
+F 0 "#PWR031" H 7950 2300 50  0001 C CNN
 F 1 "+5V" H 7950 2590 50  0000 C CNN
 F 2 "" H 7950 2450 50  0001 C CNN
 F 3 "" H 7950 2450 50  0001 C CNN
@@ -106,33 +106,33 @@ IN_THROTTLE
 Text HLabel 7350 3800 0    60   Input ~ 0
 IN_STEER
 $Comp
-L +5V #PWR030
+L +5V #PWR032
 U 1 1 59F820B2
 P 4550 2550
-F 0 "#PWR030" H 4550 2400 50  0001 C CNN
+F 0 "#PWR032" H 4550 2400 50  0001 C CNN
 F 1 "+5V" H 4550 2690 50  0000 C CNN
 F 2 "" H 4550 2550 50  0001 C CNN
 F 3 "" H 4550 2550 50  0001 C CNN
 	1    4550 2550
 	1    0    0    -1  
 $EndComp
-Text Label 3300 2700 0    60   ~ 0
-T_RX1
 Text Label 3300 2800 0    60   ~ 0
+T_RX1
+Text Label 3300 2700 0    60   ~ 0
 T_TX1
 Text Label 3300 3100 0    60   ~ 0
 CTX
 Text Label 3300 3200 0    60   ~ 0
 CRX
-Text Label 5100 3100 2    60   ~ 0
-T_RX2
 Text Label 5100 3200 2    60   ~ 0
+T_RX2
+Text Label 5100 3100 2    60   ~ 0
 T_TX2
 $Comp
-L GND #PWR031
+L GND #PWR033
 U 1 1 59F82B8B
 P 3800 4500
-F 0 "#PWR031" H 3800 4250 50  0001 C CNN
+F 0 "#PWR033" H 3800 4250 50  0001 C CNN
 F 1 "GND" H 3800 4350 50  0000 C CNN
 F 2 "" H 3800 4500 50  0001 C CNN
 F 3 "" H 3800 4500 50  0001 C CNN
@@ -143,9 +143,9 @@ Text Label 5100 2800 2    60   ~ 0
 T_A8
 Text Label 5100 2700 2    60   ~ 0
 T_A9
-Text HLabel 3250 2700 0    60   Input ~ 0
-T_RX1
 Text HLabel 3250 2800 0    60   Input ~ 0
+T_RX1
+Text HLabel 3250 2700 0    60   Input ~ 0
 T_TX1
 Text HLabel 3250 3100 0    60   Input ~ 0
 T_CTX
@@ -155,9 +155,9 @@ Text HLabel 5150 2800 2    60   Input ~ 0
 T_A8
 Text HLabel 5150 2700 2    60   Input ~ 0
 T_A9
-Text HLabel 5150 3100 2    60   Input ~ 0
-T_RX2
 Text HLabel 5150 3200 2    60   Input ~ 0
+T_RX2
+Text HLabel 5150 3100 2    60   Input ~ 0
 T_TX2
 $Comp
 L CONN_03x08 J9
@@ -174,17 +174,17 @@ Text HLabel 3250 4000 0    60   Input ~ 0
 T_SDA
 Text HLabel 3250 4100 0    60   Input ~ 0
 T_SCL
-Text HLabel 5150 4000 2    60   Input ~ 0
-T_RX3
 Text HLabel 5150 4100 2    60   Input ~ 0
+T_RX3
+Text HLabel 5150 4000 2    60   Input ~ 0
 T_TX3
 Text Label 3300 4000 0    60   ~ 0
 T_SDA
 Text Label 3300 4100 0    60   ~ 0
 T_SCL
-Text Label 5100 4000 2    60   ~ 0
-T_RX3
 Text Label 5100 4100 2    60   ~ 0
+T_RX3
+Text Label 5100 4000 2    60   ~ 0
 T_TX3
 $Comp
 L Conn_02x08_Odd_Even J7
@@ -316,10 +316,10 @@ Connection ~ 8700 3300
 Connection ~ 8700 3400
 Connection ~ 8700 3500
 $Comp
-L +12V #PWR032
+L +12V #PWR034
 U 1 1 5A1C2C5E
 P 9300 2600
-F 0 "#PWR032" H 9300 2450 50  0001 C CNN
+F 0 "#PWR034" H 9300 2450 50  0001 C CNN
 F 1 "+12V" H 9300 2740 50  0000 C CNN
 F 2 "" H 9300 2600 50  0001 C CNN
 F 3 "" H 9300 2600 50  0001 C CNN
