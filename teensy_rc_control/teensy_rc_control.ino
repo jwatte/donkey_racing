@@ -159,8 +159,8 @@ void loop() {
       if (sendThrottle > 1548) sendThrottle = 1548;
       if (sendThrottle < 1430) sendThrottle = 1430;
     } else if (fsValues[6] < 1700) {
-      if (sendThrottle > 1570) sendThrottle = 1570;
-      if (sendThrottle < 1430) sendThrottle = 1430;
+      if (sendThrottle > 1580) sendThrottle = 1580;
+      if (sendThrottle < 1410) sendThrottle = 1410;
     }
     carSteer.writeMicroseconds(map_polarity(sendSteer, STEER_INVERT));
     carThrottle.writeMicroseconds(sendThrottle);
