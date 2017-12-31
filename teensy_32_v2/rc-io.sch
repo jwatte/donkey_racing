@@ -270,7 +270,7 @@ Wire Wire Line
 Wire Wire Line
 	4450 4100 5150 4100
 Wire Wire Line
-	4550 4200 4550 2550
+	4550 3300 4550 2550
 Wire Wire Line
 	3950 2900 4550 2900
 Connection ~ 4450 2900
@@ -298,10 +298,7 @@ F 3 "" H 4150 4100 50  0001 C CNN
 	1    4150 4100
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	3950 4200 4550 4200
 Connection ~ 4550 3300
-Connection ~ 4450 4200
 Wire Wire Line
 	3800 4300 4450 4300
 Connection ~ 3800 4300
@@ -324,6 +321,22 @@ F 1 "+12V" H 9300 2740 50  0000 C CNN
 F 2 "" H 9300 2600 50  0001 C CNN
 F 3 "" H 9300 2600 50  0001 C CNN
 	1    9300 2600
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	3950 4200 4700 4200
+Wire Wire Line
+	4700 4200 4700 3750
+Connection ~ 4450 4200
+$Comp
+L +3V3 #PWR?
+U 1 1 5A495654
+P 4700 3750
+F 0 "#PWR?" H 4700 3600 50  0001 C CNN
+F 1 "+3V3" H 4700 3890 50  0000 C CNN
+F 2 "" H 4700 3750 50  0001 C CNN
+F 3 "" H 4700 3750 50  0001 C CNN
+	1    4700 3750
 	1    0    0    -1  
 $EndComp
 $EndSCHEMATC
