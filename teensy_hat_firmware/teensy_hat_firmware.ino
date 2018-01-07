@@ -32,6 +32,8 @@ uint8_t readBufPtr;
 uint16_t serialSteer;
 uint16_t serialThrottle;
 
+bool serialEchoEnabled = false;
+
 
 void read_voltage(uint16_t &v, float &voltage) {
   v = analogRead(PIN_A_VOLTAGE_IN);
@@ -93,7 +95,7 @@ void check_voltage(uint32_t now) {
         }
       }
     }
-    if (!!RPI_SERIAL) {
+    if (serialEchoEnabled && !!RPI_SERIAL) {
       char *wptr = writeBuf;
       *wptr++ = 'V';
       *wptr++ = ' ';
@@ -177,26 +179,40 @@ void read_i2c(uint32_t now) {
 }
 
 uint32_t lastSerialTime = 0;
+int servalues[4] = { 0 };
 
 void do_serial_command(char const *cmd, uint32_t now) {
-  if (*cmd == 'D') {
+  char cmdchar = *cmd;
+  ++cmd;
+  int nvals = 0;
+  while (nvals < 4 && *cmd) {
+    if (*cmd <= 32) {
+      ++cmd;
+    } else {
+      servalues[nvals] = atoi(cmd);
+      ++nvals;
+      while (*cmd >= '0' && *cmd <= '9') {
+        ++cmd;
+      }
+    }
+  }
+  if (cmdchar == 'D' && nvals == 2) {
     //  drive
-    serialSteer = atoi(cmd+2);
-    cmd += 2;
-    while (*cmd >= '0' && *cmd <= '9') {
-      ++cmd;
-    }
-    if (*cmd) {
-      ++cmd;
-      serialThrottle = atoi(cmd);
-    }
+    serialSteer = servalues[0];
+    serialThrottle = servalues[1];
     lastSerialTime = now;
-  } else if (*cmd == 'O') {
+  } else if (*cmd == 'O' && nvals == 0) {
     //  off
+    pinMode(PIN_POWER_CONTROL, OUTPUT);
     digitalWrite(PIN_POWER_CONTROL, LOW);
+  } else if (*cmd == 'X' && nvals == 1) {
+    //  enable/disable serial echo
+    serialEchoEnabled = servalues[0] > 0;
   } else {
     //  unknown
-    RPI_SERIAL.println("?");
+    if (serialEchoEnabled) {
+      RPI_SERIAL.println("?");
+    }
   }
 }
 
@@ -224,7 +240,7 @@ void read_serial(uint32_t now) {
 }
 
 void apply_control_adjustments(uint16_t &steer, uint16_t &throttle) {
-  steer = (uint16_t)(((int)steer - 1500) * STEER_MULTIPLY + 1500 + STEER_ADJUSTMENT);
+  steer = (uint16_t)(((int)steer - 1500 + STEER_ADJUSTMENT) * STEER_MULTIPLY + 1500);
   if (steer < MIN_STEER) {
     steer = MIN_STEER;
   }
@@ -242,18 +258,47 @@ void apply_control_adjustments(uint16_t &steer, uint16_t &throttle) {
 }
 
 void generate_output(uint32_t now) {
+
   uint16_t steer = 1500;
   uint16_t throttle = 1500;
-  if (lastI2cTime) {
-    steer = pwmEmulation.readChannelUs(0);
-    throttle = pwmEmulation.readChannelUs(1);
-  } else if (lastSerialTime) {
-    steer = serialSteer;
-    throttle = serialThrottle;
-  } else if (lastInputTime) {
+  bool autoSource = false;
+
+  if (lastInputTime && ((iBusInput[2] > 1800) || (iBusInput[9] > 1800))) {
+    //  if aux channel is high, or tenth channel (right switch on FSi6) is set,
+    //  just drive, without auto.
     steer = iBusInput[0];
     throttle = iBusInput[1];
   }
+  else if (lastI2cTime) {
+    //  I2C trumps serial
+    steer = pwmEmulation.readChannelUs(0);
+    throttle = pwmEmulation.readChannelUs(1);
+    autoSource = true;
+  } else if (lastSerialTime) {
+    //  serial trumps manual
+    steer = serialSteer;
+    throttle = serialThrottle;
+    autoSource = true;
+  } else if (lastInputTime) {
+    //  manual drive if available
+    steer = iBusInput[0];
+    throttle = iBusInput[1];
+  }
+  
+  if (autoSource) {
+    //  safety control if auto-driving
+    if (iBusInput[1] < 1400) {
+      //  back up if throttle control says so
+      throttle = min(iBusInput[1], throttle);
+      steer = 1500;
+    } else {
+      if (iBusInput[1] < 1600) {
+        //  don't allow driving if throttle doesn't say drive
+        throttle = 1500;
+      }
+    }
+  }
+  
   apply_control_adjustments(steer, throttle);
   svoSteer.writeMicroseconds(steer);
   svoThrottle.writeMicroseconds(throttle);
@@ -264,7 +309,7 @@ uint32_t lastSerialWrite = 0;
 void update_serial(uint32_t now) {
   if (now - lastSerialWrite > 32) {
     lastSerialWrite = now;
-    if (!!RPI_SERIAL) {
+    if (serialEchoEnabled && !!RPI_SERIAL) {
       char *wbuf = writeBuf;
       int d = (int)(now - lastInputTime);
       if (d > 1000 || d < 0) {

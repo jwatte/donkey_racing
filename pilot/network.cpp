@@ -24,9 +24,9 @@
 #include <caffe2/operators/relu_op.h>
 
 
-#define NETWORK_VARIANT 6
+#define NETWORK_VARIANT 8
 
-#define PARALLEL_NETWORKS 3
+#define PARALLEL_NETWORKS 2
 
 static FrameQueue *networkInput;
 static Pipeline *networkPipeline;
@@ -286,7 +286,7 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vecto
     //  Replace "squeeze" and "max_pool" layers with "relu" and "convolve/squeeze."
     //  The end result is that I have 2x2 pixels in, each with 8 outputs from a 3x3 convolution.
     //  I end up collapsing that down to a 4-output by doing Relu and 2x2x8->4 convolution.
-    //  There's a problem here in that images off by one pixel may end up mattering. Maybe a 
+    //  There's a problem here in that images off by one pixel may end up mattering. Maybe a
     //  better way would be to squeeze 1x1x8->4 and then max-pool?
     CONV("conv4", "relu3", 2, 2, 8, 4);
     CONV("conv5", "conv4", 5, 1, 4, 16);
@@ -308,6 +308,28 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vecto
     //  fully connected 192->2
     FC  ("output", "relu16", 192, 2);
     fprintf(stderr, "created model 6\n");
+#endif
+#if NETWORK_VARIANT == 8
+    assert(!ret);
+    ret = true;
+    //  Updated LeNet / SqueezeNet / MobileNet / WatteNet hybrid
+    CONV("conv2", "input", 3, 1, 1, 8);
+    POOL("pool3", "conv2", 2, 2, 8);
+    CONV("conv4", "pool3", 4, 1, 8, 32);
+    RELU("relu5", "conv4", 32);
+    CONV("conv6", "relu5", 1, 1, 32, 8);
+    POOL("pool7", "conv6", 2, 2, 8);
+    CONV("conv8", "pool7", 3, 1, 8, 64);
+    RELU("relu9", "conv8", 64);
+    CONV("conv10", "relu9", 1, 1, 64, 16);
+    POOL("pool11", "conv10", 2, 2, 16);
+    CONV("conv12", "pool11", 1, 1, 16, 32);
+    RELU("relu13", "conv12", 32);
+    CONV("conv14", "relu13", 3, 1, 32, 64);
+    RELU("relu15", "conv14", 64);
+    FC  ("fc16", "relu15", 960, 128);
+    RELU("relu17", "fc16", 128);
+    FC  ("output", "relu17", 128, 2);
 #endif
 
     return ret;

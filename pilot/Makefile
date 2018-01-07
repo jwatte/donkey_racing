@@ -6,7 +6,7 @@ C_O:=$(patsubst %.c,obj/%.o,$(CFILES))
 CPP_O:=$(patsubst %.cpp,obj/%.o,$(CPPFILES))
 LIBS:=-lpthread -Wl,--no-whole-archive -lCaffe2_CPU -lglog -lprotobuf
 OPT?=-O2
-CFLAGS:=-Wall -Werror $(OPT) -I/usr/local/include -I/usr/local/src/caffe2/third_party/eigen
+CFLAGS:=-Wall -Werror $(OPT) -I/usr/local/include -I/media/pi/localsrc/caffe2/third_party/eigen
 CPPFLAGS:=$(CFLAGS) -std=gnu++11 -Wno-deprecated
 TOOL_O:=$(patsubst %,obj/%.o,$(TOOLS))
 PILOT_O:=$(filter-out $(TOOL_O),$(C_O) $(CPP_O))

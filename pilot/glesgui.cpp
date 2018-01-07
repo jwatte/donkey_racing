@@ -179,7 +179,7 @@ static bool init_ogl(Context *ctx, unsigned int width, unsigned int height) {
     ctx->screen_width = width;
     ctx->screen_height = height;
 
-    if (init_truetype("/usr/share/fonts/truetype/roboto/Roboto-Regular.ttf") < 0) {
+    if (init_truetype("/usr/share/fonts/truetype/roboto/hinted/Roboto-Regular.ttf") < 0) {
         fprintf(stderr, "Could not load font\n");
         return false;
     }

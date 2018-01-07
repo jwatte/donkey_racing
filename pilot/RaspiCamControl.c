@@ -64,6 +64,7 @@ static const int exposure_map_size = sizeof(exposure_map) / sizeof(exposure_map[
 
 /// Structure to cross reference flicker avoid strings against the MMAL parameter equivalent
 
+#if 0
 static XREF_T  flicker_avoid_map[] =
 {
    {"off",           MMAL_PARAM_FLICKERAVOID_OFF},
@@ -73,6 +74,7 @@ static XREF_T  flicker_avoid_map[] =
 };
 
 static const int flicker_avoid_map_size = sizeof(flicker_avoid_map) / sizeof(flicker_avoid_map[0]);
+#endif
 
 /// Structure to cross reference awb strings against the MMAL parameter equivalent
 static XREF_T awb_map[] =
@@ -118,6 +120,7 @@ static XREF_T imagefx_map[] =
 
 static const int imagefx_map_size = sizeof(imagefx_map) / sizeof(imagefx_map[0]);
 
+#if 0
 static XREF_T metering_mode_map[] =
 {
    {"average",       MMAL_PARAM_EXPOSUREMETERINGMODE_AVERAGE},
@@ -146,7 +149,7 @@ static XREF_T stereo_mode_map[] =
 };
 
 static const int stereo_mode_map_size = sizeof(stereo_mode_map)/sizeof(stereo_mode_map[0]);
-
+#endif
 
 #define CommandSharpness   0
 #define CommandContrast    1

@@ -3,6 +3,8 @@
 #include "glesgui.h"
 #include <algorithm>
 #include <GLES2/gl2.h>
+#include <math.h>
+
 
 static bool clip(float left, float bottom, float width, float height, Aperture &ap) {
     float l = std::max(left, ap.left);

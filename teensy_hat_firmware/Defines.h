@@ -12,7 +12,7 @@
 #define MIN_STEER 1100
 #define MAX_STEER 1900
 //  My steering is slightly off to the left, so compensate.
-#define STEER_ADJUSTMENT 40
+#define STEER_ADJUSTMENT 14
 //  My HiTec servo is backwards. Set this to 1 for regular.
 #define STEER_MULTIPLY -1
 
