@@ -1,6 +1,10 @@
 #include <opencv2/core/core.hpp>
+#if 0
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#else
+#include <opencv2/imgproc/imgproc.hpp>
+#endif
 #include <opencv2/highgui/highgui.hpp>
 
 #include <iostream>

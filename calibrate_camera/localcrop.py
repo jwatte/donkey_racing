@@ -1,13 +1,11 @@
 import math
 
-x = 104 # leaves 444 pixels in center
-#x = 72  # leaves 496 pixels in center
-y = 94  # 12 cm ahead of camera center
-        # at bottom, 444 pixels in center crosses 6*9 = 54 centimeters
+x = 91 # leaves 640-(2*x) pixels in center
+y = 120 # leaves 480-(2*y) pixels in center
 w = 640-2*x
 h = 480-2*y
-yoffset = -72 # change this if you want to crop higher up or lower down
-            # more positive number means further down
+yoffset = 50 # change this if you want to crop higher up or lower down
+             # more positive number means further down
 
 def params():
     return (x, y, w, h, yoffset)
