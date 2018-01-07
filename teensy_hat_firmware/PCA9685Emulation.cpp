@@ -63,7 +63,7 @@ uint16_t PCA9685Emulator::readChannelUs(uint8_t ch) {
   if ((mem[MODE1] & SLEEP) | !(mem[MODE2] & OUTDRV)) {
     ret = 0;
   } else {
-    ret = ((uint32_t)mem[LED0_ON_L+4*ch] + ((uint32_t)mem[LED0_ON_H+4*ch]<<8)) * ((uint32_t)mem[PRESCALE]+1) / 25ul;
+    ret = ((uint32_t)mem[LED0_ON_L+4*ch] + ((uint32_t)mem[LED0_ON_H+4*ch]<<8)) * ((uint32_t)mem[FAKE_PRESCALE]+1) / 25ul;
   }
   sei();
   return ret;

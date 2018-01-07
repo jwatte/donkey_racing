@@ -210,7 +210,7 @@ void do_serial_command(char const *cmd, uint32_t now) {
  *  - O means "turn off"
  */
 void read_serial(uint32_t now) {
-  while (RPI_SERIAL.available()) {
+  while (RPI_SERIAL.available() > 0) {
     if (readBufPtr == sizeof(readBuf)) {
       readBufPtr = 0;
     }
@@ -273,8 +273,8 @@ void update_serial(uint32_t now) {
         *wbuf++ = 'C';
         *wbuf++ = ' ';
         itoa(d, wbuf, 10);
-        wbuf += strlen(wbuf);
       }
+      wbuf += strlen(wbuf);
       for (int i = 0; i != 10; ++i) {
         *wbuf++ = ' ';
         itoa(iBusInput[i], wbuf, 10);

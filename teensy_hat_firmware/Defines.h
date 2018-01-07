@@ -25,8 +25,8 @@
 #define PIN_THROTTLE_OUT 6
 #define PIN_POWER_CONTROL 20
 
-//#define RPI_SERIAL Serial3  //  UART
-#define RPI_SERIAL Serial   //  USB
+#define RPI_SERIAL Serial3  //  UART
+//#define RPI_SERIAL Serial   //  USB
 #define RPI_BAUD_RATE 115200
 
 #define IBUS_SERIAL Serial1
