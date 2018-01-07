@@ -1,4 +1,5 @@
 EESchema Schematic File Version 2
+LIBS:teensy_32_v2-rescue
 LIBS:power
 LIBS:device
 LIBS:switches

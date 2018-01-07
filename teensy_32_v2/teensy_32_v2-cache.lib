@@ -478,11 +478,11 @@ X A 2 150 0 100 L 50 50 1 1 P
 ENDDRAW
 ENDDEF
 #
-# D_Zener
+# D_Zener-RESCUE-teensy_32_v2
 #
-DEF D_Zener D 0 40 N N 1 F N
+DEF D_Zener-RESCUE-teensy_32_v2 D 0 40 N N 1 F N
 F0 "D" 0 100 50 H V C CNN
-F1 "D_Zener" 0 -100 50 H V C CNN
+F1 "D_Zener-RESCUE-teensy_32_v2" 0 -100 50 H V C CNN
 F2 "" 0 0 50 H I C CNN
 F3 "" 0 0 50 H I C CNN
 $FPLIST

@@ -1,4 +1,5 @@
 EESchema Schematic File Version 2
+LIBS:teensy_32_v2-rescue
 LIBS:power
 LIBS:device
 LIBS:switches
@@ -816,9 +817,11 @@ F 3 "" H 1200 6250 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L D_Zener D7
+L D_Zener-RESCUE-teensy_32_v2 D7
 U 1 1 5A485C98
 P 1200 5750
+AR Path="/5A485C98" Ref="D7"  Part="1" 
+AR Path="/59ED6513/5A485C98" Ref="D7"  Part="1" 
 F 0 "D7" H 1200 5900 50  0000 C CNN
 F 1 "ESD9M5.0ST5G" H 1200 5650 50  0000 C CNN
 F 2 "teensy:SOD-923" H 1200 5750 50  0001 C CNN
@@ -831,9 +834,11 @@ Wire Wire Line
 Wire Wire Line
 	1200 5900 1200 6250
 $Comp
-L D_Zener D8
+L D_Zener-RESCUE-teensy_32_v2 D8
 U 1 1 5A4B06E7
 P 6150 4550
+AR Path="/5A4B06E7" Ref="D8"  Part="1" 
+AR Path="/59ED6513/5A4B06E7" Ref="D8"  Part="1" 
 F 0 "D8" H 6200 4450 50  0000 C CNN
 F 1 "SMAJ16A-E3/61" H 6150 4650 50  0000 C CNN
 F 2 "Diodes_SMD:D_SMA_Standard" H 6150 4550 50  0001 C CNN
@@ -842,9 +847,11 @@ F 3 "" H 6150 4550 50  0001 C CNN
 	0    1    1    0   
 $EndComp
 $Comp
-L D_Zener D9
+L D_Zener-RESCUE-teensy_32_v2 D9
 U 1 1 5A4B3289
 P 2850 2800
+AR Path="/5A4B3289" Ref="D9"  Part="1" 
+AR Path="/59ED6513/5A4B3289" Ref="D9"  Part="1" 
 F 0 "D9" H 2900 2700 50  0000 C CNN
 F 1 "824500850" H 2850 2900 50  0000 C CNN
 F 2 "Diodes_SMD:D_SMA_Standard" H 2850 2800 50  0001 C CNN
