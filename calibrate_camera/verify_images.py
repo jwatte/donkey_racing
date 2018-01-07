@@ -13,7 +13,7 @@ imgpoints = []
 
 images = sys.argv[1:]
 if len(images) < 2:
-    print "need at least 2 images"
+    print("need at least 2 images")
     sys.exit(1)
 
 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -27,21 +27,21 @@ for i in images:
     if ret == True:
         cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
     else:
-        print("Could not find chessboard in image " + i)
+        print(("Could not find chessboard in image " + i))
     cv2.drawChessboardCorners(im, (8, 6), corners, ret)
     cv2.imshow('corners', im)
     while True:
-        print(i + ": k/space for KEEP, d/backspace for DELETE, q/escape to quit")
+        print((i + ": k/space for KEEP, d/backspace for DELETE, q/escape to quit"))
         k = cv2.waitKey() & 255
         # print("key="+str(k))
         if (k == 8) or (k == 100):  # d
             if os.path.exists("backup.png"):
                 os.unlink("backup.png")
             os.rename(i, "backup.png")
-            print("Image " + i + " renamed to backup.png")
+            print(("Image " + i + " renamed to backup.png"))
             break
         elif (k == 32) or (k == 107):   # k
-            print("Image " + i + " marked good")
+            print(("Image " + i + " marked good"))
             imgpoints.append(corners)
             objpoints.append(objp)
             break

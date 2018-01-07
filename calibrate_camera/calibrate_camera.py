@@ -17,7 +17,8 @@ imgpoints = []
 
 images = sys.argv[1:]
 if len(images) < 2:
-    print "need at least 2 images"
+    print("need at least 2 images")
+    print("argv is " + repr(sys.argv))
     sys.exit(1)
 
 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -33,13 +34,13 @@ for i in images:
     if ret == True:
         cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
     else:
-        print("Could not find chessboard in image " + i)
+        print(("Could not find chessboard in image " + i))
         print("Make sure that you verify images and sift out bad images first")
         sys.exit(1)
     imgpoints.append(corners)
     objpoints.append(objp)
 
-print("Loaded %d images; calibrating" % (len(images),))
+print(("Loaded %d images; calibrating" % (len(images),)))
 
 Kout = np.zeros((3, 3))
 Dout = np.zeros((4,))
@@ -59,8 +60,8 @@ if fisheye:
     roi = (0, 0, w, h)
     #print(Kout)
     #print(Ddist)
-    print("Kmtx=" + repr(Kmtx) + "\nDdist=" + repr(Ddist))
-    print("roi=" + repr(roi) + "\nnewcameramtx=" + repr(Pnewcameramtx))
+    print(("Kmtx=" + repr(Kmtx) + "\nDdist=" + repr(Ddist)))
+    print(("roi=" + repr(roi) + "\nnewcameramtx=" + repr(Pnewcameramtx)))
     mapx, mapy = cv2.fisheye.initUndistortRectifyMap(Kmtx, Ddist,
             np.array([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]]),
             Pnewcameramtx, (w, h), cv2.CV_32FC1)
@@ -68,7 +69,7 @@ else:
     ret, Kmtx, Ddist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],
                 Kout, Dout, flags=0)
     Pnewcameramtx, roi = cv2.getOptimalNewCameraMatrix(Kmtx, Ddist, (h, w), 1, (h, w))
-    print("roi=" + repr(roi) + "\nnewcameramtx=" + repr(Pnewcameramtx))
+    print(("roi=" + repr(roi) + "\nnewcameramtx=" + repr(Pnewcameramtx)))
     if (roi[2] == 0) or (roi[3] == 0):
         roi = (0, 0, w, h)
     mapx, mapy = cv2.initUndistortRectifyMap(Kmtx, Ddist, None, Pnewcameramtx, (w, h), 5)
@@ -76,13 +77,13 @@ else:
 x, y, w, h = roi
 
 print("Saving parameters to calibrate.pkl")
-import cPickle as pickle
+import pickle as pickle
 pickle.dump({'mapx':mapx, 'mapy':mapy, 'w':w, 'h':h, 'x':x, 'y': y}, open("calibrate.pkl", "wb"))
 print("Done calibrating; here's an undistorted image")
 
 dst = cv2.remap(im, mapx, mapy, cv2.INTER_LINEAR)
 x, y, w, h = roi
-print("roi="+repr(roi))
+print(("roi="+repr(roi)))
 #dst = dst[y:h+h, x:x+w] # crop
 cv2.rectangle(dst, (x,y), (x+w-1,y+h-1), (255,0,255), 1)
 cv2.imshow('rectified', dst)

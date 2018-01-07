@@ -12,7 +12,9 @@ obj/%.o:	%.cpp
 	-mkdir -p obj
 	g++ $(CFLAGS) -c -g -o $@ $< -MMD -std=gnu++11
 
-table.cpp:	maketable_flat.py calibrate.pkl localcrop.py
-	python maketable_flat.py
+table.cpp:	maketable_rect.py calibrate.pkl localcrop.py
+	python3 maketable_rect.py
+#table.cpp:	maketable_flat.py calibrate.pkl localcrop.py
+#	python maketable_flat.py
 
 -include $(wildcard obj/*.d)

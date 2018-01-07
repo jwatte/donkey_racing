@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 import cv2
-import cPickle as pickle
+import pickle as pickle
 
 class Rectify:
     def __init__(self, path=None):

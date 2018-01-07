@@ -1,5 +1,5 @@
 
-import cPickle as pickle
+import pickle as pickle
 
 image = []
 for y in range(0, 480):

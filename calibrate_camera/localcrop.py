@@ -51,7 +51,7 @@ def sq_ypos(fcm):
     f_tandown = (-s_slope * f_x * f_x + f_x + s_slope)/s_slopescale
     f_ret=s_vfrontmulpx*f_tandown+480/2.0
     f_ok=(f_ret>=s_toppx and f_ret<=s_toppx+s_heightpx)
-    print('fcm=%.1f down=%.1f tan=%.2f ret=%.1f' % (fcm, f_down, f_tandown, f_ret))
+    print(('fcm=%.1f down=%.1f tan=%.2f ret=%.1f' % (fcm, f_down, f_tandown, f_ret)))
     return f_ret, f_ok
     
 def sq_xpos(fcm,dxcm):
@@ -64,15 +64,15 @@ def sq_xpos(fcm,dxcm):
     return f_ret, f_ok
 
 if __name__ == "__main__":
-    print('hfrontmulpx=%.1f / %f (%.2f); vfrontmulpx=%.1f / %f (%.2f)' %
-            (s_hfrontmulpx, s_widthpx/2.0, math.tan(rad(s_hfovhdeg)), s_vfrontmulpx, s_heightpx/2.0, math.tan(rad(s_hfovvdeg))))
-    print('hfovh=%.1f / %f  hfovv=%.1f / %f' % (s_hfovhdeg, s_widthpx/2.0, s_hfovvdeg, s_heightpx/2.0))
+    print(('hfrontmulpx=%.1f / %f (%.2f); vfrontmulpx=%.1f / %f (%.2f)' %
+            (s_hfrontmulpx, s_widthpx/2.0, math.tan(rad(s_hfovhdeg)), s_vfrontmulpx, s_heightpx/2.0, math.tan(rad(s_hfovvdeg)))))
+    print(('hfovh=%.1f / %f  hfovv=%.1f / %f' % (s_hfovhdeg, s_widthpx/2.0, s_hfovvdeg, s_heightpx/2.0)))
     y=sq_ypos(62.7)
     x,_=sq_xpos(62.7,0.0)
-    print("62.7,0.0="+str(y)+","+str(x))
+    print(("62.7,0.0="+str(y)+","+str(x)))
     y=sq_ypos(12.0)
     x,_=sq_xpos(12.0,-30)
-    print("10.0,-30.0="+str(y)+","+str(x))
+    print(("10.0,-30.0="+str(y)+","+str(x)))
     y=sq_ypos(100.0)
     x,_=sq_xpos(100.0,30.0)
-    print("100.0,30.0="+str(y)+","+str(x))
+    print(("100.0,30.0="+str(y)+","+str(x)))

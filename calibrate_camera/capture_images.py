@@ -26,7 +26,7 @@ with capture.Capture() as c:
 n = 1
 for im in images:
     name = 'cal-image-%03d.png' % (n,)
-    print("saving " + name)
+    print(("saving " + name))
     cv2.imwrite(name, im)
     n += 1 
 

@@ -2,7 +2,7 @@
 
 import sys
 import cv2
-import cPickle as pickle
+import pickle as pickle
 import numpy as np
 import localcrop
 import rectify
