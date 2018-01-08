@@ -315,19 +315,19 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vecto
     //  Updated LeNet / SqueezeNet / MobileNet / WatteNet hybrid
     CONV("conv2", "input", 3, 1, 1, 8);
     POOL("pool3", "conv2", 2, 2, 8);
-    CONV("conv4", "pool3", 4, 1, 8, 32);
-    RELU("relu5", "conv4", 32);
-    CONV("conv6", "relu5", 1, 1, 32, 8);
+    CONV("conv4", "pool3", 3, 1, 8, 16);
+    RELU("relu5", "conv4", 16);
+    CONV("conv6", "relu5", 1, 1, 16, 8);
     POOL("pool7", "conv6", 2, 2, 8);
-    CONV("conv8", "pool7", 3, 1, 8, 64);
-    RELU("relu9", "conv8", 64);
-    CONV("conv10", "relu9", 1, 1, 64, 16);
-    POOL("pool11", "conv10", 2, 2, 16);
-    CONV("conv12", "pool11", 1, 1, 16, 32);
-    RELU("relu13", "conv12", 32);
-    CONV("conv14", "relu13", 3, 1, 32, 64);
-    RELU("relu15", "conv14", 64);
-    FC  ("fc16", "relu15", 960, 128);
+    CONV("conv8", "pool7", 3, 1, 8, 32);
+    RELU("relu9", "conv8", 32);
+    CONV("conv10", "relu9", 1, 1, 32, 8);
+    POOL("pool11", "conv10", 2, 2, 8);
+    CONV("conv12", "pool11", 3, 1, 8, 64);
+    RELU("relu13", "conv12", 64);
+    CONV("conv14", "relu13", 1, 1, 64, 32);
+    RELU("relu15", "conv14", 32);
+    FC  ("fc16", "relu15", 2880, 128);
     RELU("relu17", "fc16", 128);
     FC  ("output", "relu17", 128, 2);
 #endif

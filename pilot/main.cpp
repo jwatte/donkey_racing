@@ -8,7 +8,7 @@
 #include "settings.h"
 #include "../stb/stb_image_write.h"
 #include "serial.h"
-#include "../teensy_rc_control/Packets.h"
+#include "Packets.h"
 #include "lapwatch.h"
 #include "filethread.h"
 #include "cleanup.h"

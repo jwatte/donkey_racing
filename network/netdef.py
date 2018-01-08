@@ -141,8 +141,51 @@ def AddNetModel_6(model, data):
     # 325512 parameters total
     return output
 
+def AddNetModel_8(model, data):
+    # 0 params, dims [1, 78, 150], ops 11700
+    input1 = data
+    # 72 params, dims [8, 76, 148], ops 809856
+    conv2 = brew.conv(model, input1, 'conv2', dim_in=1, dim_out=8, kernel=3, stride=1)
+    # 0 params, dims [8, 38, 74], ops 22496
+    pool3 = brew.max_pool(model, conv2, 'pool3', kernel=2, stride=2)
+    # 1152 params, dims [16, 36, 72], ops 2985984
+    conv4 = brew.conv(model, pool3, 'conv4', dim_in=8, dim_out=16, kernel=3, stride=1)
+    # 0 params, dims [16, 36, 72], ops 41472
+    relu5 = brew.relu(model, conv4, 'relu5')
+    # 128 params, dims [8, 36, 72], ops 331776
+    conv6 = brew.conv(model, relu5, 'conv6', dim_in=16, dim_out=8, kernel=1, stride=1)
+    # 0 params, dims [8, 18, 36], ops 5184
+    pool7 = brew.max_pool(model, conv6, 'pool7', kernel=2, stride=2)
+    # 2304 params, dims [32, 16, 34], ops 1253376
+    conv8 = brew.conv(model, pool7, 'conv8', dim_in=8, dim_out=32, kernel=3, stride=1)
+    # 0 params, dims [32, 16, 34], ops 17408
+    relu9 = brew.relu(model, conv8, 'relu9')
+    # 256 params, dims [8, 16, 34], ops 139264
+    conv10 = brew.conv(model, relu9, 'conv10', dim_in=32, dim_out=8, kernel=1, stride=1)
+    # 0 params, dims [8, 8, 17], ops 1088
+    pool11 = brew.max_pool(model, conv10, 'pool11', kernel=2, stride=2)
+    # 4608 params, dims [64, 6, 15], ops 414720
+    conv12 = brew.conv(model, pool11, 'conv12', dim_in=8, dim_out=64, kernel=3, stride=1)
+    # 0 params, dims [64, 6, 15], ops 5760
+    relu13 = brew.relu(model, conv12, 'relu13')
+    # 2048 params, dims [32, 6, 15], ops 184320
+    conv14 = brew.conv(model, relu13, 'conv14', dim_in=64, dim_out=32, kernel=1, stride=1)
+    # 0 params, dims [32, 6, 15], ops 2880
+    relu15 = brew.relu(model, conv14, 'relu15')
+    # 368640 params, dims [128], ops 47185920
+    fc16 = brew.fc(model, relu15, 'fc16', dim_in=2880, dim_out=128)
+    # 0 params, dims [128], ops 128
+    relu17 = brew.relu(model, fc16, 'relu17')
+    # 256 params, dims [2], ops 512
+    output = brew.fc(model, relu17, 'output', dim_in=128, dim_out=2)
+    # 379464 parameters total
+    # 53413844 operations total
+    return output
+
+
+
 def AddNetModel(model, data):
-    return AddNetModel_6(model, data)
+    return AddNetModel_8(model, data)
 
 def AddTrainingOperators(model, output, label):
     loss = model.SquaredL2Distance([output, label], "loss")

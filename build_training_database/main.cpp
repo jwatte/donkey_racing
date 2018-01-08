@@ -1086,6 +1086,10 @@ void compute_labels_cv(
         if (counts[i]) {
             double straight = atan2(-xavg[i], yavg[i] + 54.0);  //  where is the horizon?
             straight = 0;   //  for top-down projection
+            if (counts[i] > 0) {
+                //  for perspective projection
+                straight = (-(xavg[i]-(outputwidth*0.5))) / (54.0 * yavg[i]);
+            }
             double strength = (10 + sqrt(counts[i])) / (10.0 + yavg[i] + oph/2); //  magic constant!
             double clusterdir = calc_cluster_dir(
                     cl_temp, opw, i,

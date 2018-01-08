@@ -2,7 +2,7 @@
 #include "metrics.h"
 #include "crc.h"
 #include "settings.h"
-#include "../teensy_rc_control/Packets.h"
+#include "Packets.h"
 
 #include <unistd.h>
 #include <sys/fcntl.h>
@@ -23,17 +23,16 @@ float gSteer = 0.0f;
 float gThrottle = 0.0f;
 float gTweakSteer = 0.0;
 
-static HostControl hostControl;
+static int serport;
+static bool serialRunning = true;
+static int64_t lastSerialSendTime;
+static pthread_t serialThread;
+static pthread_mutex_t serialMutex = PTHREAD_MUTEX_INITIALIZER;
 
-static int hidport = -1;
-static pthread_t hidthread;
-static bool hidRunning;
-static uint64_t lastHidSendTime;
-static uint8_t my_frame_id = 0;
-static uint8_t peer_frameid = 0;
+
 
 /* microseconds */
-#define HID_SEND_INTERVAL 11111
+#define SERIAL_SEND_INTERVAL 19000
 
 static char const *charstr(int i, char *str) {
     if (i >= 32 && i < 127) {
@@ -55,11 +54,6 @@ static float clamp(float val, float from, float to) {
     if (val < from) return from;
     if (val > to) return to;
     return val;
-}
-
-void serial_steer(float steer, float throttle) {
-    gSteer = clamp(steer * gSteerScale, -1.0f, 1.0f);
-    gThrottle = gThrottleMin + clamp(throttle * gThrottleScale, 0, 1.0f);
 }
 
 static void hexdump(void const *vp, int end) {
@@ -96,7 +90,35 @@ template<typename T> struct IncomingPacket {
 
 static IncomingPacket<TrimInfo> g_TrimInfo;
 static IncomingPacket<IBusPacket> g_IBusPacket;
+static IncomingPacket<VoltageLevels> g_VoltageLevels;
+
 static IncomingPacket<SteerControl> g_SteerControl;
+static IncomingPacket<EchoEnabled> g_EchoEnabled;
+static IncomingPacket<TurnOff> g_TurnOff;
+
+
+
+void serial_steer(float steer, float throttle) {
+    pthread_mutex_lock(&serialMutex);
+    gSteer = clamp(steer * gSteerScale, -1.0f, 1.0f);
+    gThrottle = gThrottleMin + clamp(throttle * gThrottleScale, 0, 1.0f);
+    pthread_mutex_unlock(&serialMutex);
+}
+
+void serial_power_off() {
+    pthread_mutex_lock(&serialMutex);
+    g_TurnOff.fresh = true;
+    g_TurnOff.when = metric::Collector::clock();
+    pthread_mutex_unlock(&serialMutex);
+}
+
+void serial_enable_echo(bool en) {
+    pthread_mutex_lock(&serialMutex);
+    g_EchoEnabled.echo = en ? 1 : 0;
+    g_EchoEnabled.fresh = true;
+    g_EchoEnabled.when = metric::Collector::clock();
+    pthread_mutex_unlock(&serialMutex);
+}
 
 TrimInfo const *serial_trim_info(uint64_t *oTime, bool *oFresh) {
     *oFresh = g_TrimInfo.fresh;
@@ -112,16 +134,17 @@ IBusPacket const *serial_ibus_packet(uint64_t *oTime, bool *oFresh) {
     return &g_IBusPacket.data;
 }
 
-SteerControl const *serial_steer_control(uint64_t *oTime, bool *oFresh) {
-    *oFresh = g_SteerControl.fresh;
-    if (g_SteerControl.fresh) g_SteerControl.fresh = false;
-    *oTime = g_SteerControl.when;
-    return &g_SteerControl.data;
+IBusPacket const *serial_voltage_levels(uint64_t *oTime, bool *oFresh) {
+    *oFresh = g_VoltageLevels.fresh;
+    if (g_VoltageLevels.fresh) g_VoltageLevels.fresh = false;
+    *oTime = g_VoltageLevels.when;
+    return &g_VoltageLevels.data;
 }
 
 
+
 #define RECVPACKET(type) \
-    case type::PacketCode: \
+    case type::Token: \
         if (!unpack(g_##type, sizeof(type), ++buf, end)) { \
             fprintf(stderr, "Packet too short for %s: %ld\n", #type, (long)(end-buf)); \
             hexdump(buf, end-buf); \
@@ -131,11 +154,24 @@ SteerControl const *serial_steer_control(uint64_t *oTime, bool *oFresh) {
         break;
 
 template<typename T> bool unpack(IncomingPacket<T> &dst, size_t dsz, unsigned char const *&src, unsigned char const *end) {
-    if (end-src < (long)dsz) {
-        return false;
+    unsigned char const *ss = src;
+    int num = 0;
+    int32_t *ip = reinterpret_cast<int32_t *>(&dst);
+    while (*ss != '\r' && *s != '\n') {
+        while (*ss == ' ') {
+            ++ss;
+        }
+        char *oot = nullptr;
+        long l = strtol((char const*)ss, &oot, 10);
+        if (oot && oot >= (char const *)ss) {
+            *ip++ = (int32_t)l;;
+            ss = (unsigned char const *)oot;
+        } else {
+            //  short receive
+            return false;
+        }
     }
-    memcpy(&dst.data, src, dsz);
-    src += dsz;
+    src = ss;
     dst.fresh = true;
     dst.when = metric::Collector::clock();
     return true;
@@ -143,104 +179,83 @@ template<typename T> bool unpack(IncomingPacket<T> &dst, size_t dsz, unsigned ch
 
 // buf points at frameid
 static void handle_packet(unsigned char const *buf, unsigned char const *end) {
-    // framing skips initial 55 aa
-    assert(end - buf >= 5);
-    uint16_t crc = crc_kermit(buf+2, end-buf-4);
-    if (((crc & 0xff) != end[-2]) || (((crc >> 8) & 0xff) != end[-1])) {
-        Serial_CrcErrors.increment();
-        fprintf(stderr, "serial CRC got %x calculated %x\n", end[-2] | (end[-1] << 8), crc);
-        return;
+    unsigned char code = *buf;
+    ++buf;
+    //  decode a packet
+    switch (*buf) {
+        RECVPACKET(TrimInfo);
+        RECVPACKET(IBusPacket);
+        RECVPACKET(VoltageLevels);
+        default:
+            fprintf(stderr, "serial unknown message ID 0x%02x; flushing to end of packet\n", *buf);
+            hexdump(buf, end-buf);
+            Serial_UnknownMessage.set();
+            return;
     }
-    peer_frameid = buf[0];
-    //  ignore lastseen for now
-    //  ignore length; already handled by caller
-    buf += 3;   //  skip preamble
-    end -= 2;   //  skip CRC
-    while (buf != end) {
-        //  decode a packet
-        switch (*buf) {
-            RECVPACKET(TrimInfo);
-            RECVPACKET(IBusPacket);
-            RECVPACKET(SteerControl);
-            default:
-                fprintf(stderr, "serial unknown message ID 0x%02x; flushing to end of packet\n", *buf);
-                hexdump(buf, end-buf);
-                Serial_UnknownMessage.set();
-                return;
-        }
-        Serial_PacketsDecoded.increment();
-    }
+    Serial_PacketsDecoded.increment();
 }
 
-/* 0x55 0xAA <frameid> <lastseen> <length> <payload> <CRC16-L> <CRC16-H>
- * CRC16 is CRC16 of <length> and <payload>.
- */
-static void parse_buffer(unsigned char *buf, int &bufptr) {
-    if (bufptr < 7) {
-        fprintf(stderr, "short buffer: %d bytes\n", bufptr);
-        return; //  can't be anything
-    }
-    if (buf[0] == 0x55 && buf[1] == 0xAA) {
-        //  header
-        if (buf[4] > 64-7) {
-            //  must flush this packet
-            goto clear_to_i;
+template<typename T> char *encode(T &t, char *dst, char *end) {
+    if (!dst) return nullptr;
+    if (end-dst < 4) return nullptr;
+    *dst++ = T::Token);
+    int32_t *p = reinterpret_cast<int32_t *>(&t);
+    for (int i = 0; i != T::NumInts; ++i) {
+        int q = snprintf(dst, end-dst, " %d", p[i]);
+        if (q >= end-dst) {
+            return nullptr;
         }
-        if (buf[4] + 7 > bufptr) {
-            //  don't yet have all the data
-            goto clear_to_i;
-        }
-        /* why 7 ?
-         * 55, aa, frameid, last seen, length, ..., crc, crc
-         */
-        handle_packet(buf + 2, buf + 7 + buf[4]);
-        return; //  success
+        dst += q;
     }
-clear_to_i:
-    fprintf(stderr, "bufptr %d failure\n", bufptr);
-    return; //  failure
+    if (end-dst < 3) {
+        return nullptr;
+    }
+    strcpy(dst, "\r\n");
+    return dst+3;
 }
 
 static bool send_outgoing_packet() {
-    ++my_frame_id;
-    if (!my_frame_id) {
-        my_frame_id = 1;
+    char obuf[1025], *ptr = obuf, *end = &obuf[1024];
+    pthread_mutex_lock(&serialMutex);
+    if (TurnOff.fresh) {
+        ptr = encode(g_TurnOff.data, ptr, end);
+        TurnOff.fresh = false;
     }
-    unsigned char pack[64] = { 0x55, 0xAA, my_frame_id, peer_frameid, 0 };
-    int dlen = 0, dmaxlen = 64-7;
-    (void)&dmaxlen,(void)&dlen;
-
-    // pack in some stuff
-    hostControl.steer = map_rc(gSteer + gTweakSteer);
-    hostControl.throttle = map_rc(gThrottle);
-    pack[5] = HostControl::PacketCode;
-    memcpy(&pack[6], &hostControl, sizeof(hostControl));
-    dlen += 1 + sizeof(hostControl);
-
-    pack[4] = (unsigned char)(dlen & 0xff);
-    uint16_t crc = crc_kermit(&pack[4], dlen+1);
-    pack[5+dlen] = (unsigned char)(crc & 0xff);
-    pack[6+dlen] = (unsigned char)((crc >> 8) & 0xff);
-    int wr = ::write(hidport, pack, dlen+7);
-    if (wr != dlen+7) {
-        if (wr < 0) {
-            perror("serial write");
-        } else {
-            fprintf(stderr, "serial short write: %d instead of %d\n", wr, dlen+7);
-        }
+    if (EchoEnabled.fresh) {
+        ptr = encode(g_EchoEnabled.data, ptr, end);
+        EchoEnabled.fresh = false;
+    }
+    if (SteerControl.when > metric::Collector::clock()-1000000) {
+        ptr = encode(g_SteerControl.data, ptr, end);
+    }
+    pthread_mutex_unlock(&serialMutex);
+    if (!ptr) {
+        fprintf(stderr, "serial marshalling error\n");
         return false;
     }
-    Serial_BytesSent.increment(wr);
+    if (ptr != obuf) {
+        int wr = ::write(hidport, obuf, ptr-obuf);
+        if (wr != ptr-obuf) {
+            if (wr < 0) {
+                perror("serial write");
+            } else {
+                fprintf(stderr, "serial short write: %d instead of %d\n", wr, dlen+7);
+            }
+            return false;
+        }
+        Serial_BytesSent.increment(ptr-obuf);
+    }
     return true;
 }
 
 static void *ser_fn(void *) {
     int bufptr = 0;
-    unsigned char inbuf[64] = { 0 };
+    unsigned char inbuf[256] = { 0 };
     int nerror = 0;
-    puts("start hid thread");
+    puts("start serial thread");
     bool shouldsleep = false;
-    while (hidRunning) {
+    serial_enable_echo(true);
+    while (serialRunning) {
         if (bufptr == 256) {
             bufptr = 0; //  flush
         }
@@ -249,22 +264,22 @@ static void *ser_fn(void *) {
         if (shouldsleep) {
             fd_set fds;
             FD_ZERO(&fds);
-            FD_SET(hidport, &fds);
+            FD_SET(serport, &fds);
             struct timeval tv = { 0, 0 };
-            tv.tv_usec = HID_SEND_INTERVAL - (now - lastHidSendTime);
+            tv.tv_usec = HID_SEND_INTERVAL - (now - lastSerialSendTime);
             if (tv.tv_usec < 1) {
                 tv.tv_usec = 1;
             }
             if (tv.tv_usec > 20000) {
                 tv.tv_usec = 20000;
             }
-            n = select(hidport+1, &fds, NULL, NULL, &tv);
+            n = select(serport+1, &fds, NULL, NULL, &tv);
             now = metric::Collector::clock();
         }
         if (n >= 0) {
-            if (now - lastHidSendTime >= HID_SEND_INTERVAL) {
+            if (now - lastSerialSendTime >= SERIAL_SEND_INTERVAL) {
                 //  quantize to the send interval
-                lastHidSendTime = now - (now % HID_SEND_INTERVAL);
+                lastSerialSendTime = now - (now % SERIAL_SEND_INTERVAL);
                 //  do send
                 if (!send_outgoing_packet()) {
                     fprintf(stderr, "\nsend error");
@@ -275,11 +290,11 @@ static void *ser_fn(void *) {
                     }
                 }
             }
-            int r = read(hidport, inbuf, sizeof(inbuf));
+            int r = read(serport, &inbuf[bufptr], sizeof(inbuf)-bufptr);
             if (r < 0) {
                 shouldsleep = true;
                 if (errno != EAGAIN) {
-                    if (hidRunning) {
+                    if (serialRunning) {
                         Serial_Error.set();
                         perror("serial");
                         ++nerror;
@@ -297,10 +312,17 @@ static void *ser_fn(void *) {
                     }
                     bufptr += r;
                 }
-                if (bufptr > 0) {
-                    //  parse and perhaps remove data
-                    parse_buffer(inbuf, bufptr);
-                    bufptr = 0;
+                if (bufptr > 1) {
+                    for (int i = 1; i != bufptr; ++i) {
+                        if (inbuf[i] == '\n' && inbuf[i-1] == '\r') {
+                            parse_buffer(inbuf, i);
+                            if (i != bufptr) {
+                                memmove(inbuf, &inbuf[i], bufptr-i);
+                            }
+                            bufptr -= i;
+                            i = -1;
+                        }
+                    }
                 }
             }
         } else {
@@ -311,64 +333,56 @@ static void *ser_fn(void *) {
             }
         }
     }
-    puts("end hidthread");
+    //  turn off echo
+    serial_enable_echo(false);      //  track state
+    write(serport, "X 0\r\n", 5);   //  actuall tell it
+    puts("end serial thread");
     return 0;
 }
 
-#define TEENSY_VENDOR 0x16c0
-#define TEENSY_PRODUCT 0x0486
-#define TEENSY_RAWHID_ENDPOINT_DESC_SIZE 28
+#define TOKEN(x) \
+    case x: return B##x
 
-static int verify_open(char const *name) {
-    int fd;
-    int sz[2] = { 0 };
-    hidraw_devinfo hrdi = { 0 };
+static int speed_token(int speed) {
+    switch (speed) {
+        TOKEN(9600);
+        TOKEN(19200);
+        TOKEN(38400);
+        TOKEN(57600);
+        TOKEN(115200);
+        TOKEN(230400);
+        TOKEN(1000000);
+    }
+    return B115200;
+}
 
+static int verify_open(char const *name, int speed) {
     fd = open(name, O_RDWR | O_NONBLOCK);
     if (fd < 0) {
         return -1;
     }
-    if (ioctl(fd, HIDIOCGRAWINFO, &hrdi) < 0) {
-        goto bad_fd;
+    struct termios tio;
+    int r = tcgetattr(fd, &tio);
+    if (r < 0) {
+        perror("tcgetattr");
     }
-    if (hrdi.vendor != TEENSY_VENDOR || hrdi.product != TEENSY_PRODUCT) {
-        goto bad_fd;
+    cfsetspeed(&tio, speed_token(speed));
+    cfmakeraw(&tio);
+    tio.c_iflag &= ~(IXON | IXOFF | OFILL);
+    r = tcsetattr(fd, &tio, TCSAFLUSH);
+    if (r < 0) {
+        perror("tcsetattr");
     }
-    if (ioctl(fd, HIDIOCGRDESCSIZE, sz) < 0) {
-        goto bad_fd;
-    }
-    //  A magical size found by examination
-    if (sz[0] != TEENSY_RAWHID_ENDPOINT_DESC_SIZE) {
-        goto bad_fd;
-    }
-    fprintf(stderr, "serial/hidraw open %s returns fd %d\n", name, fd);
-    //  I know this is the right fd, because if I write "reset!" to it, 
-    //  the Teensy resets, like it should.
+    fprintf(stderr, "serial open %s returns fd %d\n", name, fd);
     return fd;
-
-bad_fd:
-    if (fd >= 0) {
-        fprintf(stderr, "device %s is not the HID I want\n", name);
-        close(fd);
-    }
-    return -1;
 }
 
-bool open_hidport(char const *port) {
-    hidport = verify_open(port);
-    if (hidport < 0) {
-        //  If the specified port doesn't work, then 
-        //  try all raw hid devices, looking for ours.
-        for (int i = 0; i != 99; ++i) {
-            char buf[30];
-            sprintf(buf, "/dev/hidraw%d", i);
-            hidport = verify_open(buf);
-            if (hidport >= 0) {
-                break;
-            }
-        }
-        if (hidport < 0) {
-            fprintf(stderr, "%s is not a recognized hidraw device, and couldn't find one through scanning.\n", port);
+bool open_serport(char const *port, int speed) {
+    serport = verify_open(port, speed);
+    if (serport < 0) {
+        serport = verify_open("/dev/ttyACM0", speed);
+        if (serport < 0) {
+            fprintf(stderr, "%s is not a recognized serial device, and couldn't find one at /dev/ttyACM0.\n", port);
             return false;
         }
     }
@@ -376,10 +390,10 @@ bool open_hidport(char const *port) {
 }
 
 bool start_serial(char const *port, int speed) {
-    if (hidthread) {
+    if (serialThread) {
         return false;
     }
-    if (hidport != -1) {
+    if (serport != -1) {
         return false;
     }
     gTweakSteer = get_setting_float("steer_tweak", gTweakSteer);
@@ -387,45 +401,30 @@ bool start_serial(char const *port, int speed) {
     gThrottleScale = get_setting_float("throttle_scale", gThrottleScale);
     gThrottleMin = get_setting_float("throttle_min", gThrottleMin);
 
-    open_hidport(port);
-    if (hidport < 0) {
+    open_serport(port, speed);
+    if (serport < 0) {
         return false;
     }
-    hidRunning = true;
-    if (pthread_create(&hidthread, NULL, ser_fn, NULL) < 0) {
-        close(hidport);
-        hidport = -1;
-        hidRunning = false;
+    serialRunning = true;
+    atexit(stop_serial);
+    if (pthread_create(&serialThread, NULL, ser_fn, NULL) < 0) {
+        close(serport);
+        serport = -1;
+        serialRunning = false;
         return false;
     }
     return true;
 }
 
 void stop_serial() {
-    if (hidthread) {
-        hidRunning = false;
-        close(hidport);
+    if (serialThread) {
+        serialRunning = false;
         void *x = 0;
-        pthread_join(hidthread, &x);
-        hidport = -1;
-        hidthread = 0;
+        pthread_join(serialThread, &x);
+        close(serport);
+        serport = -1;
+        serialThread = 0;
     }
-}
-
-void serial_reset() {
-    if (hidport < 0) {
-        open_hidport("/dev/foo");
-    }
-    if (hidport < 0) {
-        fprintf(stderr, "serial_reset(): could not open HID port\n");
-        return;
-    }
-    int wr = ::write(hidport, "reset!", 6);
-    if (wr != 6) {
-        perror("serial_reset()");
-    }
-    close(hidport);
-    hidport = -1;
 }
 
 

@@ -20,7 +20,7 @@ training = True
 
 load_checkpoint=None
 load_trained=None
-load_trained="load_trained_6.crunk"
+load_trained="load_trained_8.crunk"
 
 if len(sys.argv) > 1:
     try:
