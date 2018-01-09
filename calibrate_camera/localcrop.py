@@ -1,7 +1,7 @@
 import math
 
-x = 91 # leaves 640-(2*x) pixels in center
-y = 120 # leaves 480-(2*y) pixels in center
+x = 94 # leaves 640-(2*x) pixels in center
+y = 122 # leaves 480-(2*y) pixels in center
 w = 640-2*x
 h = 480-2*y
 yoffset = 50 # change this if you want to crop higher up or lower down
@@ -9,6 +9,8 @@ yoffset = 50 # change this if you want to crop higher up or lower down
 
 def params():
     return (x, y, w, h, yoffset)
+
+# values and functions for attempted flat mapping
 
 def deg(r):
     return r * 180.0 / math.pi

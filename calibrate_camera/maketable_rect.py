@@ -13,8 +13,8 @@ fully = cdata['mapy']
 
 scaledown = 3
 
-mapx = fullx[y+h/2+yoffset:y+h+yoffset,x:x+w]
-mapy = fully[y+h/2+yoffset:y+h+yoffset,x:x+w]
+mapx = fullx[y+yoffset:y+h+yoffset,x:x+w]
+mapy = fully[y+yoffset:y+h+yoffset,x:x+w]
 
 with open('table.h', 'wb') as hfile:
     hfile.write("#if !defined(table_h)\n")
@@ -25,12 +25,12 @@ with open('table.h', 'wb') as hfile:
     hfile.write("#define SOURCE_WIDTH 640\n")
     hfile.write("#define SOURCE_HEIGHT 480\n")
     hfile.write("#define INPUT_LEFT %d\n" % (x,))
-    hfile.write("#define INPUT_TOP %d\n" % (y+int(h/2)+yoffset,))
+    hfile.write("#define INPUT_TOP %d\n" % (y+yoffset,))
     hfile.write("#define INPUT_WIDTH %d\n" % (w,))
-    hfile.write("#define INPUT_HEIGHT %d\n" % (int(h/2),))
+    hfile.write("#define INPUT_HEIGHT %d\n" % (h,))
     RECTIFIED_WIDTH = int(w/scaledown)
     hfile.write("#define RECTIFIED_WIDTH %d\n" % (RECTIFIED_WIDTH,))
-    RECTIFIED_HEIGHT = int(h/(2*scaledown))
+    RECTIFIED_HEIGHT = int(h/scaledown)
     hfile.write("#define RECTIFIED_HEIGHT %d\n" % (RECTIFIED_HEIGHT,))
     hfile.write("\n")
     hfile.write("typedef struct TableInputCoord {\n")

@@ -5,19 +5,19 @@
 
 #define SOURCE_WIDTH 640
 #define SOURCE_HEIGHT 480
-#define INPUT_LEFT 91
-#define INPUT_TOP 290
-#define INPUT_WIDTH 458
-#define INPUT_HEIGHT 120
-#define RECTIFIED_WIDTH 152
-#define RECTIFIED_HEIGHT 40
+#define INPUT_LEFT 94
+#define INPUT_TOP 172
+#define INPUT_WIDTH 452
+#define INPUT_HEIGHT 236
+#define RECTIFIED_WIDTH 150
+#define RECTIFIED_HEIGHT 78
 
 typedef struct TableInputCoord {
   float sy;
   float sx;
 } TableInputCoord;
 
-/* total table size 6080 elements 48640 bytes */
+/* total table size 11700 elements 93600 bytes */
 extern TableInputCoord const sTableInputCoords[RECTIFIED_HEIGHT][RECTIFIED_WIDTH];
 
 #endif
