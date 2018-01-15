@@ -43,7 +43,7 @@ extern "C" {
 #include "cone.h"
 
 
-#define MIN_CLUSTER_SIZE 18
+#define MIN_CLUSTER_SIZE 12
 
 bool verbose = false;
 bool progress = isatty(2);

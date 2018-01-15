@@ -142,46 +142,45 @@ def AddNetModel_6(model, data):
     return output
 
 def AddNetModel_8(model, data):
-    # 0 params, dims [1, 78, 150], ops 11700
+    # 0 params, dims [3, 62, 150], ops 27900
     input1 = data
-    # 72 params, dims [8, 76, 148], ops 809856
-    conv2 = brew.conv(model, input1, 'conv2', dim_in=1, dim_out=8, kernel=3, stride=1)
-    # 0 params, dims [8, 38, 74], ops 22496
+    # 216 params, dims [8, 60, 148], ops 1918080
+    conv2 = brew.conv(model, input1, 'conv2', dim_in=3, dim_out=8, kernel=3, stride=1)
+    # 0 params, dims [8, 30, 74], ops 17760
     pool3 = brew.max_pool(model, conv2, 'pool3', kernel=2, stride=2)
-    # 1152 params, dims [16, 36, 72], ops 2985984
+    # 1152 params, dims [16, 28, 72], ops 2322432
     conv4 = brew.conv(model, pool3, 'conv4', dim_in=8, dim_out=16, kernel=3, stride=1)
-    # 0 params, dims [16, 36, 72], ops 41472
+    # 0 params, dims [16, 28, 72], ops 32256
     relu5 = brew.relu(model, conv4, 'relu5')
-    # 128 params, dims [8, 36, 72], ops 331776
+    # 128 params, dims [8, 28, 72], ops 258048
     conv6 = brew.conv(model, relu5, 'conv6', dim_in=16, dim_out=8, kernel=1, stride=1)
-    # 0 params, dims [8, 18, 36], ops 5184
+    # 0 params, dims [8, 14, 36], ops 4032
     pool7 = brew.max_pool(model, conv6, 'pool7', kernel=2, stride=2)
-    # 2304 params, dims [32, 16, 34], ops 1253376
+    # 2304 params, dims [32, 12, 34], ops 940032
     conv8 = brew.conv(model, pool7, 'conv8', dim_in=8, dim_out=32, kernel=3, stride=1)
-    # 0 params, dims [32, 16, 34], ops 17408
+    # 0 params, dims [32, 12, 34], ops 13056
     relu9 = brew.relu(model, conv8, 'relu9')
-    # 256 params, dims [8, 16, 34], ops 139264
+    # 256 params, dims [8, 12, 34], ops 104448
     conv10 = brew.conv(model, relu9, 'conv10', dim_in=32, dim_out=8, kernel=1, stride=1)
-    # 0 params, dims [8, 8, 17], ops 1088
+    # 0 params, dims [8, 6, 17], ops 816
     pool11 = brew.max_pool(model, conv10, 'pool11', kernel=2, stride=2)
-    # 4608 params, dims [64, 6, 15], ops 414720
+    # 4608 params, dims [64, 4, 15], ops 276480
     conv12 = brew.conv(model, pool11, 'conv12', dim_in=8, dim_out=64, kernel=3, stride=1)
-    # 0 params, dims [64, 6, 15], ops 5760
+    # 0 params, dims [64, 4, 15], ops 3840
     relu13 = brew.relu(model, conv12, 'relu13')
-    # 2048 params, dims [32, 6, 15], ops 184320
+    # 2048 params, dims [32, 4, 15], ops 122880
     conv14 = brew.conv(model, relu13, 'conv14', dim_in=64, dim_out=32, kernel=1, stride=1)
-    # 0 params, dims [32, 6, 15], ops 2880
+    # 0 params, dims [32, 4, 15], ops 1920
     relu15 = brew.relu(model, conv14, 'relu15')
-    # 368640 params, dims [128], ops 47185920
-    fc16 = brew.fc(model, relu15, 'fc16', dim_in=2880, dim_out=128)
+    # 245760 params, dims [128], ops 31457280
+    fc16 = brew.fc(model, relu15, 'fc16', dim_in=1920, dim_out=128)
     # 0 params, dims [128], ops 128
     relu17 = brew.relu(model, fc16, 'relu17')
     # 256 params, dims [2], ops 512
     output = brew.fc(model, relu17, 'output', dim_in=128, dim_out=2)
-    # 379464 parameters total
-    # 53413844 operations total
+    # 256728 parameters total
+    # 37501900 operations total
     return output
-
 
 
 def AddNetModel(model, data):

@@ -1,10 +1,10 @@
 import math
 
 x = 94 # leaves 640-(2*x) pixels in center
-y = 122 # leaves 480-(2*y) pixels in center
+y = 130 # leaves 480-(2*y) pixels in center
 w = 640-2*x
 h = 480-2*y
-yoffset = 50 # change this if you want to crop higher up or lower down
+yoffset = 60 # change this if you want to crop higher up or lower down
              # more positive number means further down
 
 def params():

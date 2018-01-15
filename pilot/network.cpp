@@ -204,7 +204,7 @@ OperatorBase *mkfc(Workspace *wks, char const *name, char const *input,
     return CreateOperator(def, wks).release();
 }
 
-bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vector<OperatorBase *> &net) {
+bool instantiate_network(Workspace *wks, Blob *&input1, Blob *&output, std::vector<OperatorBase *> &net) {
     for (auto const kv : networkBlobs) {
         fprintf(stderr, "creating blob %s\n", kv.first.c_str());
         Blob *bb = wks->CreateBlob(kv.first);
@@ -221,13 +221,13 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vecto
     int w_planes = 0;
     get_unwarp_info(&w_sz, &w_width, &w_height, &w_planes);
 
-    input = wks->CreateBlob("input");
+    input1 = wks->CreateBlob("input1");
     sz.push_back(1);
     sz.push_back(w_planes);
     sz.push_back(w_height);
     sz.push_back(w_width);
     Tensor<CPUContext> *it = new Tensor<CPUContext>(sz);
-    input->Reset(it);
+    input1->Reset(it);
 
     output = wks->CreateBlob("output");
     sz.clear();
@@ -251,7 +251,7 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vecto
     assert(!ret);
     ret = true;
     //  LeNet-like model
-    CONV("conv1", "input", 3, 1, 1, 3);
+    CONV("conv1", "input1", 3, 1, 1, 3);
     POOL("pool1", "conv1", 2, 2, 3);
     CONV("conv2", "pool1", 3, 1, 3, 5);
     POOL("pool2", "conv2", 2, 2, 5);
@@ -266,7 +266,7 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vecto
     assert(!ret);
     ret = true;
     //  LeNet-like model
-    CONV("conv1", "input", 3, 1, 1, 6);
+    CONV("conv1", "input1", 3, 1, 1, 6);
     POOL("pool1", "conv1", 2, 2, 6);
     CONV("conv2", "pool1", 3, 1, 3, 8);
     POOL("pool2", "conv2", 2, 2, 8);
@@ -281,7 +281,7 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vecto
     assert(!ret);
     ret = true;
     //  Some LeNet / SqueezeNet / WatteNet hybrid
-    CONV("conv2", "input", 3, 1, 1, 8);
+    CONV("conv2", "input1", 3, 1, 1, 8);
     RELU("relu3", "conv2", 8);
     //  Replace "squeeze" and "max_pool" layers with "relu" and "convolve/squeeze."
     //  The end result is that I have 2x2 pixels in, each with 8 outputs from a 3x3 convolution.
@@ -313,7 +313,7 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vecto
     assert(!ret);
     ret = true;
     //  Updated LeNet / SqueezeNet / MobileNet / WatteNet hybrid
-    CONV("conv2", "input", 3, 1, 1, 8);
+    CONV("conv2", "input1", 3, 1, 3, 8);
     POOL("pool3", "conv2", 2, 2, 8);
     CONV("conv4", "pool3", 3, 1, 8, 16);
     RELU("relu5", "conv4", 16);
@@ -327,9 +327,10 @@ bool instantiate_network(Workspace *wks, Blob *&input, Blob *&output, std::vecto
     RELU("relu13", "conv12", 64);
     CONV("conv14", "relu13", 1, 1, 64, 32);
     RELU("relu15", "conv14", 32);
-    FC  ("fc16", "relu15", 2880, 128);
+    FC  ("fc16", "relu15", 1920, 128);
     RELU("relu17", "fc16", 128);
     FC  ("output", "relu17", 128, 2);
+    fprintf(stderr, "created model 8\n");
 #endif
 
     return ret;
