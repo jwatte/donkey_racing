@@ -4,11 +4,12 @@ x = 94 # leaves 640-(2*x) pixels in center
 y = 130 # leaves 480-(2*y) pixels in center
 w = 640-2*x
 h = 480-2*y
-yoffset = 60 # change this if you want to crop higher up or lower down
+yoffset = 32 # change this if you want to crop higher up or lower down
              # more positive number means further down
+scaledown = 1 # divide output rectified image by this much
 
 def params():
-    return (x, y, w, h, yoffset)
+    return (x, y, w, h, yoffset, scaledown)
 
 # values and functions for attempted flat mapping
 

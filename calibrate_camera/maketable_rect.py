@@ -9,9 +9,7 @@ fullx = cdata['mapx']
 fully = cdata['mapy']
 
 # make sure parameters here match with show.py !
-(x, y, w, h, yoffset) = localcrop.params()
-
-scaledown = 3
+(x, y, w, h, yoffset, scaledown) = localcrop.params()
 
 mapx = fullx[y+yoffset:y+h+yoffset,x:x+w]
 mapy = fully[y+yoffset:y+h+yoffset,x:x+w]
