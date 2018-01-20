@@ -181,7 +181,10 @@ void read_i2c(uint32_t now) {
 uint32_t lastSerialTime = 0;
 int servalues[4] = { 0 };
 
+char dbg[50];
+
 void do_serial_command(char const *cmd, uint32_t now) {
+  char const *bufin = cmd;
   char cmdchar = *cmd;
   ++cmd;
   int nvals = 0;
@@ -201,17 +204,21 @@ void do_serial_command(char const *cmd, uint32_t now) {
     serialSteer = servalues[0];
     serialThrottle = servalues[1];
     lastSerialTime = now;
-  } else if (*cmd == 'O' && nvals == 0) {
+  } else if (cmdchar == 'O' && nvals == 0) {
     //  off
     pinMode(PIN_POWER_CONTROL, OUTPUT);
     digitalWrite(PIN_POWER_CONTROL, LOW);
-  } else if (*cmd == 'X' && nvals == 1) {
+  } else if (cmdchar == 'X' && nvals == 1) {
     //  enable/disable serial echo
     serialEchoEnabled = servalues[0] > 0;
   } else {
     //  unknown
     if (serialEchoEnabled) {
       RPI_SERIAL.println("?");
+    }
+    if (!!Serial) {
+      int npr = sprintf(dbg, "?? %s\r\n", bufin);
+      Serial.write(dbg, npr);
     }
   }
 }
