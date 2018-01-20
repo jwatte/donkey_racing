@@ -287,9 +287,13 @@ void generate_output(uint32_t now) {
   
   if (autoSource) {
     //  safety control if auto-driving
-    if (iBusInput[1] < 1400) {
-      //  back up if throttle control says so
+    if (iBusInput[1] > 1100 && iBusInput[1] < 1470) {
+      //  back up if throttle control says so, but not too much
+      //  and not if the input is the "carrier lost" 1000 value.
       throttle = min(iBusInput[1], throttle);
+      if (throttle < 1350) {
+        throttle = 1350;
+      }
       steer = 1500;
     } else {
       if (iBusInput[1] < 1600) {
@@ -331,13 +335,10 @@ void update_serial(uint32_t now) {
   }
 }
 
+
 void loop() {
   
   uint32_t now = millis();
-  while (now == 0) {
-    delay(1);
-    now = millis();
-  }
 
   read_inputs(now);
   if (lastInputTime && (now - lastInputTime > INPUT_TIMEOUT)) {
