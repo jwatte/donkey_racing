@@ -54,18 +54,24 @@ bool PCA9685Emulator::step(uint32_t now)
   return ret;
 }
 
-uint16_t PCA9685Emulator::readChannelUs(uint8_t ch) {
+uint16_t PCA9685Emulator::readChannelUs(uint16_t ch) {
   if (ch >= NUM_CHANNELS) {
     return 0xffff;
   }
   uint16_t ret;
   cli();
-  if ((mem[MODE1] & SLEEP) | !(mem[MODE2] & OUTDRV)) {
+  if ((mem[MODE1] & SLEEP) || !(mem[MODE2] & OUTDRV)) {
     ret = 0;
+    sei();
   } else {
-    ret = ((uint32_t)mem[LED0_ON_L+4*ch] + ((uint32_t)mem[LED0_ON_H+4*ch]<<8)) * ((uint32_t)mem[FAKE_PRESCALE]+1) / 25ul;
+    uint32_t l_on_0 = mem[LED0_ON_L+4*ch];
+    uint32_t h_on_0 = mem[LED0_ON_H+4*ch];
+    uint32_t l_off_0 = mem[LED0_OFF_L+4*ch];
+    uint32_t h_off_0 = mem[LED0_OFF_H+4*ch];
+    uint32_t ps = mem[FAKE_PRESCALE] + 1;
+    sei();
+    ret = ((l_off_0 + (h_off_0 << 8)) - (l_on_0 + (h_on_0 << 8))) * ps / 25ul;
   }
-  sei();
   return ret;
 }
 
@@ -106,12 +112,13 @@ void PCA9685Emulator::onReceive2(int received)
       wptr = Wire.read();
       --received;
       while (received > 0) {
+        unsigned char rb = Wire.read();
         if (wptr < sizeof(mem)) {
-          mem[wptr & 0xf] = Wire.read();
+          mem[wptr] = rb;
         } else if (wptr == PRESCALE) {
-          mem[FAKE_PRESCALE] = Wire.read();
+          mem[FAKE_PRESCALE] = rb;
         } else {
-          (void)Wire.read();
+          (void)rb;
         }
         ++wptr;
         --received;

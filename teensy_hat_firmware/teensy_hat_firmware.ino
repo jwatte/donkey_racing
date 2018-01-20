@@ -348,7 +348,7 @@ void loop() {
   
   /* look for i2c drive commands */
   read_i2c(now);
-  if (lastI2cTime && (now - lastI2cTime > INPUT_TIMEOUT)) {
+  if (lastI2cTime && (now - lastI2cTime > I2C_INPUT_TIMEOUT)) {
     lastI2cTime = 0;
   }
 

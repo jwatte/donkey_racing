@@ -35,6 +35,9 @@
 //  that no more inputs will come. (milliseconds)
 #define INPUT_TIMEOUT 500
 
+#define I2C_INPUT_TIMEOUT 30000
+
+
 //  How many subsequent readings below the bad voltage before turning off.
 //  Count up to avoid temporary spikes shutting everything down. Each reading
 //  is done every 100 milliseconds.
