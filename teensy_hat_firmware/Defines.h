@@ -1,6 +1,15 @@
 #if !defined(Defines_h)
 #define Defines_h
 
+//  My HiTec servo is backwards. Set this to 1 for regular.
+#define STEER_MULTIPLY -1
+
+//  Whether to apply dead-man's grip control for I2C commands
+#define GATE_I2C_ON_RC_THROTTLE 0
+
+//  Whether to apply dead-man's grip control for serial commands
+#define GATE_SERIAL_ON_RC_THROTTLE 1
+
 //  PWM values are between 1000 and 2000, with 1500 meaning "zero"
 
 //  Limit the throttle, so that kiddos don't go too crazy.
@@ -13,9 +22,6 @@
 #define MAX_STEER 1900
 //  My steering is slightly off to the left, so compensate.
 #define STEER_ADJUSTMENT 14
-//  My HiTec servo is backwards. Set this to 1 for regular.
-#define STEER_MULTIPLY -1
-
 #define PIN_STEER_IN 11
 #define PIN_THROTTLE_IN 12
 #define PIN_MODE_IN 13

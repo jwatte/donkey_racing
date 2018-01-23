@@ -280,12 +280,16 @@ void generate_output(uint32_t now) {
     //  I2C trumps serial
     steer = pwmEmulation.readChannelUs(0);
     throttle = pwmEmulation.readChannelUs(1);
+#if GATE_I2C_ON_RC_THROTTLE
     autoSource = true;
+#endif
   } else if (lastSerialTime) {
     //  serial trumps manual
     steer = serialSteer;
     throttle = serialThrottle;
+#if GATE_SERIAL_ON_RC_THROTTLE
     autoSource = true;
+#endif
   } else if (lastInputTime) {
     //  manual drive if available
     steer = iBusInput[0];
