@@ -5,6 +5,9 @@
 
 #include <Servo.h>
 
+#define FULL_FIRMWARE 0
+
+#if FULL_FIRMWARE
 
 PinPulseIn<11> rcSteer;
 PinPulseIn<12> rcThrottle;
@@ -376,4 +379,26 @@ void loop() {
   check_voltage(now);
 }
 
+#else
+
+PCA9685Emulator pwmEmulation;
+
+Servo svoSteer;
+Servo svoThrottle;
+
+void setup() {
+  pinMode(PIN_STEER_OUT, OUTPUT);
+  svoSteer.attach(PIN_STEER_OUT);
+  pinMode(PIN_THROTTLE_OUT, OUTPUT);
+  svoThrottle.attach(PIN_THROTTLE_OUT);
+  pwmEmulation.begin(PCA9685_I2C_ADDRESS);
+}
+
+void loop() {
+  pwmEmulation.step(millis());
+  svoSteer.writeMicroseconds(pwmEmulation.readChannelUs(0));
+  svoThrottle.writeMicroseconds(pwmEmulation.readChannelUs(1));
+}
+
+#endif
 
