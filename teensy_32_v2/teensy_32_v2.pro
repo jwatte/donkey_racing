@@ -1,4 +1,4 @@
-update=Thu 04 Jan 2018 07:41:09 PM PST
+update=Mon 19 Feb 2018 01:24:51 PM PST
 version=1
 last_client=kicad
 [pcbnew]
@@ -75,3 +75,13 @@ LibName43=/usr/local/src/EDALibraries/KiCad/Schematics/MF_LEDs
 LibName44=/usr/local/src/EDALibraries/KiCad/Schematics/MF_Passives
 LibName45=/usr/local/src/EDALibraries/KiCad/Schematics/MF_Sensors
 LibName46=/usr/local/src/EDALibraries/KiCad/Schematics/MF_Switches
+[schematic_editor]
+version=1
+PageLayoutDescrFile=
+PlotDirectoryName=
+SubpartIdSeparator=0
+SubpartFirstId=65
+NetFmtName=Pcbnew
+SpiceForceRefPrefix=0
+SpiceUseNetNumbers=0
+LabSize=60

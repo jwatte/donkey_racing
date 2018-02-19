@@ -50,7 +50,7 @@ EELAYER 25 0
 EELAYER END
 $Descr A4 11693 8268
 encoding utf-8
-Sheet 1 4
+Sheet 1 5
 Title ""
 Date ""
 Rev ""
@@ -91,18 +91,18 @@ F2 "PWR_ON" I R 2700 1600 60
 F3 "VSENSE" I R 2700 1850 60 
 $EndSheet
 $Sheet
-S 5200 4600 1150 1550
+S 5200 5200 1150 1550
 U 59ED67C6
 F0 "PiTeensyIO" 60
 F1 "pi-teensy-io.sch" 60
-F2 "R_SDA" I R 6350 4950 60 
-F3 "R_SCL" I R 6350 5100 60 
-F4 "R_TX" I R 6350 5300 60 
-F5 "R_RX" I R 6350 5450 60 
-F6 "T_SDA" I L 5200 4950 60 
-F7 "T_SCL" I L 5200 5100 60 
-F8 "T_RX3" I L 5200 5300 60 
-F9 "T_TX3" I L 5200 5450 60 
+F2 "R_SDA" I R 6350 5550 60 
+F3 "R_SCL" I R 6350 5700 60 
+F4 "R_TX" I R 6350 5900 60 
+F5 "R_RX" I R 6350 6050 60 
+F6 "T_SDA" I L 5200 5550 60 
+F7 "T_SCL" I L 5200 5700 60 
+F8 "T_RX3" I L 5200 5900 60 
+F9 "T_TX3" I L 5200 6050 60 
 $EndSheet
 $Sheet
 S 5300 1050 1150 1800
@@ -195,21 +195,21 @@ F 3 "" H 10450 4700 50  0001 C CNN
 	1    10450 4700
 	1    0    0    -1  
 $EndComp
-Text Label 6500 4950 0    60   ~ 0
+Text Label 6500 5550 0    60   ~ 0
 R_SDA
-Text Label 6500 5100 0    60   ~ 0
+Text Label 6500 5700 0    60   ~ 0
 R_SCL
-Text Label 6500 5300 0    60   ~ 0
+Text Label 6500 5900 0    60   ~ 0
 R_TX
-Text Label 6500 5450 0    60   ~ 0
+Text Label 6500 6050 0    60   ~ 0
 R_RX
-Text Label 4800 5450 0    60   ~ 0
+Text Label 4800 6050 0    60   ~ 0
 T_TX3
-Text Label 4800 5300 0    60   ~ 0
+Text Label 4800 5900 0    60   ~ 0
 T_RX3
-Text Label 4800 5100 0    60   ~ 0
+Text Label 4800 5700 0    60   ~ 0
 T_SCL
-Text Label 4800 4950 0    60   ~ 0
+Text Label 4800 5550 0    60   ~ 0
 T_SDA
 Text Label 9850 2650 0    60   ~ 0
 R_TX
@@ -220,7 +220,7 @@ R_SDA
 Text Label 8900 2550 0    60   ~ 0
 R_SCL
 Wire Wire Line
-	9750 2350 9900 2350
+	9900 2350 9750 2350
 Wire Wire Line
 	9900 2000 9900 2450
 Wire Wire Line
@@ -231,7 +231,7 @@ Wire Wire Line
 Wire Wire Line
 	1150 3450 1400 3450
 Wire Wire Line
-	9250 2350 8600 2350
+	8600 2350 9250 2350
 Wire Wire Line
 	8600 2000 8600 3150
 Wire Wire Line
@@ -247,21 +247,21 @@ Wire Wire Line
 Wire Wire Line
 	10450 2550 10450 4700
 Wire Wire Line
-	6350 4950 6900 4950
+	6350 5550 6900 5550
 Wire Wire Line
-	6350 5100 6900 5100
+	6350 5700 6900 5700
 Wire Wire Line
-	6350 5300 6900 5300
+	6350 5900 6900 5900
 Wire Wire Line
-	6350 5450 6900 5450
+	6350 6050 6900 6050
 Wire Wire Line
-	4700 5450 5200 5450
+	4700 6050 5200 6050
 Wire Wire Line
-	4700 5300 5200 5300
+	4700 5900 5200 5900
 Wire Wire Line
-	4700 5100 5200 5100
+	4700 5700 5200 5700
 Wire Wire Line
-	4700 4950 5200 4950
+	4700 5550 5200 5550
 Wire Wire Line
 	9750 2650 10200 2650
 Wire Wire Line
@@ -457,9 +457,6 @@ NoConn ~ 9250 2650
 NoConn ~ 9250 2850
 NoConn ~ 9250 2950
 NoConn ~ 9250 3050
-NoConn ~ 9250 3250
-NoConn ~ 9250 3350
-NoConn ~ 9250 3450
 NoConn ~ 9250 3650
 NoConn ~ 9250 3750
 NoConn ~ 9250 3850
@@ -471,9 +468,6 @@ NoConn ~ 9750 4150
 NoConn ~ 9750 4050
 NoConn ~ 9750 3850
 NoConn ~ 9750 3650
-NoConn ~ 9750 3550
-NoConn ~ 9750 3450
-NoConn ~ 9750 3350
 NoConn ~ 9750 3150
 NoConn ~ 9750 3050
 NoConn ~ 9750 2850
@@ -572,4 +566,74 @@ Wire Wire Line
 	3000 5450 3850 5450
 Text Label 3150 5450 0    60   ~ 0
 MSG_LED
+$Sheet
+S 5200 3900 1150 900 
+U 5A8B3766
+F0 "IMU I2C" 60
+F1 "imu-i2c.sch" 60
+F2 "SCL" B R 6350 4000 60 
+F3 "SDA" B R 6350 4100 60 
+F4 "R_MOSI" O R 6350 4200 60 
+F5 "R_25" B R 6350 4300 60 
+F6 "R_MISO" I R 6350 4400 60 
+F7 "R_CE0" O R 6350 4500 60 
+F8 "R_SCK" O R 6350 4600 60 
+F9 "R_CE1" O R 6350 4700 60 
+$EndSheet
+Wire Wire Line
+	6350 4000 6700 4000
+Wire Wire Line
+	6350 4100 6700 4100
+Text Label 6450 4000 0    60   ~ 0
+R_SCL
+Text Label 6450 4100 0    60   ~ 0
+R_SDA
+Wire Wire Line
+	9250 3250 8800 3250
+Wire Wire Line
+	9250 3350 8800 3350
+Wire Wire Line
+	9250 3450 8800 3450
+Wire Wire Line
+	9750 3350 10200 3350
+Wire Wire Line
+	9750 3450 10200 3450
+Wire Wire Line
+	9750 3550 10200 3550
+Text Label 8900 3250 0    60   ~ 0
+R_MOSI
+Text Label 8900 3350 0    60   ~ 0
+R_MISO
+Text Label 8900 3450 0    60   ~ 0
+R_SCK
+Text Label 9850 3350 0    60   ~ 0
+R_25
+Text Label 9850 3450 0    60   ~ 0
+R_CE0
+Text Label 9850 3550 0    60   ~ 0
+R_CE1
+Wire Wire Line
+	6350 4200 6700 4200
+Wire Wire Line
+	6350 4300 6700 4300
+Wire Wire Line
+	6350 4400 6700 4400
+Wire Wire Line
+	6350 4500 6700 4500
+Wire Wire Line
+	6350 4600 6700 4600
+Wire Wire Line
+	6350 4700 6700 4700
+Text Label 6450 4200 0    60   ~ 0
+R_MOSI
+Text Label 6450 4300 0    60   ~ 0
+R_25
+Text Label 6450 4400 0    60   ~ 0
+R_MISO
+Text Label 6450 4500 0    60   ~ 0
+R_CE0
+Text Label 6450 4600 0    60   ~ 0
+R_SCK
+Text Label 6450 4700 0    60   ~ 0
+R_CE1
 $EndSCHEMATC
