@@ -1,7 +1,7 @@
 (export (version D)
   (design
     (source /usr/local/src/trainingdata/donkey_racing/teensy_32_v2/teensy_32_v2.sch)
-    (date "Mon 19 Feb 2018 12:53:55 PM PST")
+    (date "Thu 22 Feb 2018 09:02:39 PM PST")
     (tool "Eeschema 4.0.7-e2-6376~58~ubuntu17.04.1")
     (sheet (number 1) (name /) (tstamps /)
       (title_block
@@ -307,7 +307,7 @@
       (tstamp 5A5994BE))
     (comp (ref J10)
       (value 0878980426)
-      (footprint Pin_Headers:Pin_Header_Straight_1x04_Pitch2.54mm_SMD_Pin1Right)
+      (footprint MF_Connectors:MF_Connectors-PTH_2.54MM_01X04)
       (libsource (lib conn) (part Conn_01x04))
       (sheetpath (names /Power/) (tstamps /59ED6513/))
       (tstamp 5A59CACD))
@@ -888,7 +888,7 @@
     (library (logical philips)
       (uri /usr/share/kicad/library/philips.lib))
     (library (logical teensy_3)
-      (uri /usr/local/src/trainingdata/donkey_racing/teensy_32_carrier/teensy_3.lib))
+      (uri /usr/local/src/trainingdata/donkey_racing/teensy_32_v2/teensy_3.lib))
     (library (logical MF_Discrete_Semiconductor)
       (uri /usr/local/src/EDALibraries/KiCad/Schematics/MF_Discrete_Semiconductor.lib))
     (library (logical MF_Switches)
