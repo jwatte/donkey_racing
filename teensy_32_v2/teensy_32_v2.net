@@ -1,7 +1,7 @@
 (export (version D)
   (design
     (source /usr/local/src/trainingdata/donkey_racing/teensy_32_v2/teensy_32_v2.sch)
-    (date "Thu 22 Feb 2018 09:02:39 PM PST")
+    (date "Sat 24 Feb 2018 09:33:03 AM PST")
     (tool "Eeschema 4.0.7-e2-6376~58~ubuntu17.04.1")
     (sheet (number 1) (name /) (tstamps /)
       (title_block
@@ -288,7 +288,7 @@
       (sheetpath (names /Power/) (tstamps /59ED6513/))
       (tstamp 5A485C98))
     (comp (ref D8)
-      (value SMAJ16A-E3/61)
+      (value SMAJ15A-E3/61)
       (footprint Diodes_SMD:D_SMA_Standard)
       (libsource (lib teensy_32_v2-rescue) (part D_Zener-RESCUE-teensy_32_v2))
       (sheetpath (names /Power/) (tstamps /59ED6513/))
@@ -300,7 +300,7 @@
       (sheetpath (names /Power/) (tstamps /59ED6513/))
       (tstamp 5A4B3289))
     (comp (ref D10)
-      (value SMCJ15A)
+      (value SMCJ16A)
       (footprint Diodes_SMD:D_SMC_Standard)
       (libsource (lib device) (part D_Zener))
       (sheetpath (names /Power/) (tstamps /59ED6513/))
