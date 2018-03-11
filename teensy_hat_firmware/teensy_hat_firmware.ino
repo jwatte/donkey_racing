@@ -5,7 +5,7 @@
 
 #include <Servo.h>
 
-#define FULL_FIRMWARE 0
+#define FULL_FIRMWARE 1
 
 #if FULL_FIRMWARE
 
@@ -36,7 +36,8 @@ uint16_t serialSteer;
 uint16_t serialThrottle;
 
 bool serialEchoEnabled = false;
-
+char const *driveModeStr = "";
+float lastReadVoltage;
 
 void read_voltage(uint16_t &v, float &voltage) {
   v = analogRead(PIN_A_VOLTAGE_IN);
@@ -84,8 +85,10 @@ void check_voltage(uint32_t now) {
   float voltage;
   if (now-lastVoltageCheck > 100) {
     read_voltage(v, voltage);
+    lastReadVoltage = voltage;
     v = (uint16_t)(voltage * 100 + 0.5f);
     if (determinedCount != 20) {
+      //  average the first 20 readings
       determinedVoltage += voltage / 20;
       ++determinedCount;
       if (determinedCount == 20) {
@@ -214,6 +217,9 @@ void do_serial_command(char const *cmd, uint32_t now) {
   } else if (cmdchar == 'X' && nvals == 1) {
     //  enable/disable serial echo
     serialEchoEnabled = servalues[0] > 0;
+  } else if (cmdchar == 'Q') {
+    int npr = sprintf(dbg, "%.1fV %s\r\n", lastReadVoltage, driveModeStr);
+    RPI_SERIAL.write(dbg, npr);
   } else {
     //  unknown
     if (serialEchoEnabled) {
@@ -278,11 +284,13 @@ void generate_output(uint32_t now) {
     //  just drive, without auto.
     steer = iBusInput[0];
     throttle = iBusInput[1];
+    driveModeStr = "RC*";
   }
   else if (lastI2cTime) {
     //  I2C trumps serial
     steer = pwmEmulation.readChannelUs(0);
     throttle = pwmEmulation.readChannelUs(1);
+    driveModeStr = "I2C";
 #if GATE_I2C_ON_RC_THROTTLE
     autoSource = true;
 #endif
@@ -290,6 +298,7 @@ void generate_output(uint32_t now) {
     //  serial trumps manual
     steer = serialSteer;
     throttle = serialThrottle;
+    driveModeStr = "UART";
 #if GATE_SERIAL_ON_RC_THROTTLE
     autoSource = true;
 #endif
@@ -297,6 +306,9 @@ void generate_output(uint32_t now) {
     //  manual drive if available
     steer = iBusInput[0];
     throttle = iBusInput[1];
+    driveModeStr = "RC?";
+  } else {
+    driveModeStr = "NONE";
   }
   
   if (autoSource) {
