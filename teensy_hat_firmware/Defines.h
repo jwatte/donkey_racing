@@ -37,6 +37,9 @@
 
 #define IBUS_SERIAL Serial1
 
+#define VESC_SERIAL Serial2
+#define VESC_BAUD_RATE 115200
+
 //  After the last valid input, wait this long before deciding 
 //  that no more inputs will come. (milliseconds)
 #define INPUT_TIMEOUT 500

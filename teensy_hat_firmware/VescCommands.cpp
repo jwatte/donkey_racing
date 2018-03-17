@@ -1,11 +1,60 @@
 #include "VescCommands.h"
 
-VescCommands(HardwareSerial &ser)
+extern "C" {
+#include "crc.h"
+}
+
+// Communication commands
+typedef enum {
+  COMM_FW_VERSION = 0,
+  COMM_JUMP_TO_BOOTLOADER,
+  COMM_ERASE_NEW_APP,
+  COMM_WRITE_NEW_APP_DATA,
+  COMM_GET_VALUES,
+  COMM_SET_DUTY,
+  COMM_SET_CURRENT,
+  COMM_SET_CURRENT_BRAKE,
+  COMM_SET_RPM,
+  COMM_SET_POS,
+  COMM_SET_HANDBRAKE,
+  COMM_SET_DETECT,
+  COMM_SET_SERVO_POS,
+  COMM_SET_MCCONF,
+  COMM_GET_MCCONF,
+  COMM_GET_MCCONF_DEFAULT,
+  COMM_SET_APPCONF,
+  COMM_GET_APPCONF,
+  COMM_GET_APPCONF_DEFAULT,
+  COMM_SAMPLE_PRINT,
+  COMM_TERMINAL_CMD,
+  COMM_PRINT,
+  COMM_ROTOR_POSITION,
+  COMM_EXPERIMENT_SAMPLE,
+  COMM_DETECT_MOTOR_PARAM,
+  COMM_DETECT_MOTOR_R_L,
+  COMM_DETECT_MOTOR_FLUX_LINKAGE,
+  COMM_DETECT_ENCODER,
+  COMM_DETECT_HALL_FOC,
+  COMM_REBOOT,
+  COMM_ALIVE,
+  COMM_GET_DECODED_PPM,
+  COMM_GET_DECODED_ADC,
+  COMM_GET_DECODED_CHUK,
+  COMM_FORWARD_CAN,
+  COMM_SET_CHUCK_DATA,
+  COMM_CUSTOM_APP_DATA,
+  COMM_NRF_START_PAIRING
+} COMM_PACKET_ID;
+
+VescCommands::VescCommands(HardwareSerial &ser)
     : ser_(ser)
 {
-    ser_.begin(115200);
+}
+
+void VescCommands::begin(uint32_t baud) {
+    ser_.begin(baud);
     inBufPtr_ = 0;
-    mode_ = ModeNull;
+    mode_ = ModeNone;
     modeValue_ = 0;
     newValues_ = false;
     memset(&vals_, 0, sizeof(vals_));
@@ -39,7 +88,7 @@ void VescCommands::setDuty(int32_t d100000) {
 }
 
 void VescCommands::setNull() {
-    mode_ = ModeNull;
+    mode_ = ModeNone;
 }
 
 bool VescCommands::gotNewValues() {
@@ -95,11 +144,11 @@ void VescCommands::poll(uint32_t now) {
             inBuf_[inBufPtr_++] = b;
             if (inBuf_[0] == 2) {
                 if (inBufPtr_ == 2) {
-                    if (inBufPtr_[1] > sizeof(inBuf_) - 2 - 3) {
+                    if (inBuf_[1] > sizeof(inBuf_) - 2 - 3) {
                         inBufPtr_ = 0;
                         continue;
                     }
-                } else if (inBufPtr_ == 2 + inBufPtr_[1] + 3) {
+                } else if (inBufPtr_ == 2 + inBuf_[1] + 3) {
                     decode_packet(&inBuf_[3], ((uint16_t)inBuf_[1] << 8) + inBuf_[2]);
                     inBufPtr_ = 0;
                 }
@@ -141,7 +190,7 @@ static float get_be_f16(unsigned char const *&ptr, float scale) {
     return i / scale;
 }
 
-static void put_be_i32(unsigned char const *&ptr, int32_t value) {
+static void put_be_i32(unsigned char *&ptr, int32_t value) {
     ptr[0] = (uint8_t)((uint32_t)value >> 24);
     ptr[1] = (uint8_t)((uint32_t)value >> 16);
     ptr[2] = (uint8_t)((uint32_t)value >> 8);
@@ -149,7 +198,7 @@ static void put_be_i32(unsigned char const *&ptr, int32_t value) {
     ptr += 4;
 }
 
-static void put_be_u16(unsigned char const *&ptr, uint16_t value) {
+static void put_be_u16(unsigned char *&ptr, uint16_t value) {
     ptr[0] = (uint8_t)((uint32_t)value >> 8);
     ptr[1] = (uint8_t)((uint32_t)value);
     ptr += 2;
@@ -197,27 +246,27 @@ bool VescCommands::decode_packet(unsigned char const *ptr, uint16_t size) {
     }
 }
 
-void VescCommands::pure_cmd(uint8_t cmd) {
+void VescCommands::pure_cmd(uint8_t cbyt) {
     unsigned char cmd[6];
     cmd[0] = 2;
     cmd[1] = 1;
-    cmd[2] = cmd;
-    unsigned char const *p = &cmd[3];
+    cmd[2] = cbyt;
+    unsigned char *p = &cmd[3];
     put_be_u16(p, crc16(&cmd[2], 1));
     cmd[5] = 3;
-    ser_.write(6, cmd);
+    ser_.write(cmd, 6);
 }
 
-void VescCommands::int32_cmd(uint8_t cmd, int32_t val) {
+void VescCommands::int32_cmd(uint8_t cbyt, int32_t val) {
     unsigned char cmd[10];
     cmd[0] = 2;
     cmd[1] = 5;
-    cmd[2] = cmd;
-    unsigned char const *p = &cmd[3];
+    cmd[2] = cbyt;
+    unsigned char *p = &cmd[3];
     put_be_i32(p, val);
-    put_be_u16(p, crc16(&cmd[2], 1));
+    put_be_u16(p, crc16(&cmd[2], 5));
     cmd[9] = 3;
-    ser_.write(10, cmd);
+    ser_.write(cmd, 10);
 }
 
 

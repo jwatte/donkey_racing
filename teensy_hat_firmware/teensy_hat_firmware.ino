@@ -2,6 +2,7 @@
 #include "PinPulseIn.h"
 #include "FlySkyIBus.h"
 #include "PCA9685Emulator.h"
+#include "VescCommands.h"
 
 #include <Servo.h>
 
@@ -15,6 +16,9 @@ PinPulseIn<13> rcMode;
 
 Servo svoSteer;
 Servo svoThrottle;
+
+VescCommands vesc(VESC_SERIAL);
+uint32_t lastVescThrottle;
 
 uint16_t iBusInput[10];
 FlySkyIBus fsIbus(IBUS_SERIAL, iBusInput, 10);
@@ -70,6 +74,7 @@ void setup() {
   fsIbus.begin();
 
   RPI_SERIAL.begin(RPI_BAUD_RATE);
+  vesc.begin(VESC_BAUD_RATE);
 
   pwmEmulation.begin(PCA9685_I2C_ADDRESS);
 
@@ -273,6 +278,18 @@ void apply_control_adjustments(uint16_t &steer, uint16_t &throttle) {
   }
 }
 
+int32_t map_vesc_throttle(uint16_t pwm) {
+  float t = pwm;
+  t -= 1500.0f;
+  t /= 500.0f;
+  if (t < 0.04f && t > -0.04f) {
+    t = 0.0f;
+  }
+  if (t > 1.0f) t = 1.0f;
+  if (t < -1.0f) t = -0.5f;
+  return (int32_t)(100000ul*t);
+}
+
 void generate_output(uint32_t now) {
 
   uint16_t steer = 1500;
@@ -313,7 +330,7 @@ void generate_output(uint32_t now) {
   
   if (autoSource) {
     //  safety control if auto-driving
-    if (iBusInput[1] > 1100 && iBusInput[1] < 1470) {
+    if (iBusInput[1] > 1050 && iBusInput[1] < 1470) {
       //  back up if throttle control says so, but not too much
       //  and not if the input is the "carrier lost" 1000 value.
       throttle = min(iBusInput[1], throttle);
@@ -328,7 +345,39 @@ void generate_output(uint32_t now) {
       }
     }
   }
-  
+
+  if (iBusInput[6] < 1300) {
+    //  default, let whatever through
+  } else if (iBusInput[6] < 1700) {
+    //  some moderation
+    if (throttle > 1630) {
+      throttle = 1630;
+    } else if (throttle < 1370) {
+      throttle = 1370;
+    }
+  } else {
+    //  a lot of moderation
+    if (throttle > 1560) {
+      throttle = 1560;
+    } else if (throttle < 1440) {
+      throttle = 1440;
+    }
+  }
+
+  int32_t vth = map_vesc_throttle(throttle);
+  if (vth == 0) {
+    if (now - lastVescThrottle < 1500) {
+      vesc.setCurrentBrake(15000);
+    } else if (now - lastVescThrottle < 60000) {
+      vesc.setHandbrake(2000);
+    } else  {
+      vesc.setNull();
+    }
+  } else {
+    vesc.setDuty(vth);
+    lastVescThrottle = now;
+  }
+
   apply_control_adjustments(steer, throttle);
   svoSteer.writeMicroseconds(steer);
   svoThrottle.writeMicroseconds(throttle);
@@ -385,6 +434,7 @@ void loop() {
   }
 
   generate_output(now);
+  vesc.poll(now);
 
   update_serial(now);
 

@@ -23,6 +23,6 @@
 /*
  * Functions
  */
-unsigned short crc16(unsigned char *buf, unsigned int len);
+unsigned short crc16(unsigned char const *buf, unsigned int len);
 
 #endif /* CRC_H_ */

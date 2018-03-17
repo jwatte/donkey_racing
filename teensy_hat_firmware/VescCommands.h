@@ -1,6 +1,8 @@
 #if !defined(VescCommands_h)
 #define VescCommands_h
 
+#include <Arduino.h>
+
 /* You will need to turn on the UART app in the 
  * VESC BLDC tool for this to work. Set baud rate 
  * to 115200.
@@ -8,7 +10,8 @@
 class VescCommands {
     public:
         VescCommands(HardwareSerial &ser);
-
+        void begin(uint32_t baud);
+        
         /* Set up the communication to continually send 
          * some command to the ESC. Whatever the last-set 
          * command is, will be sent when you poll(), about 
