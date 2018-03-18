@@ -39,6 +39,8 @@ uint8_t readBufPtr;
 uint16_t serialSteer;
 uint16_t serialThrottle;
 
+uint16_t hackSteerSmooth = 1500;
+
 bool serialEchoEnabled = false;
 char const *driveModeStr = "";
 float lastReadVoltage;
@@ -378,9 +380,21 @@ void generate_output(uint32_t now) {
     lastVescThrottle = now;
   }
 
-  apply_control_adjustments(steer, throttle);
-  svoSteer.writeMicroseconds(steer);
-  svoThrottle.writeMicroseconds(throttle);
+  static uint32_t lastServoWriteTime;
+  if (now - lastServoWriteTime >= 16) {
+    apply_control_adjustments(steer, throttle);
+    if (steer > hackSteerSmooth + 50) {
+      hackSteerSmooth += 50;
+    } else if (steer < hackSteerSmooth - 50) {
+      hackSteerSmooth -= 50;
+    } else {
+      hackSteerSmooth = steer;
+    }
+    steer = hackSteerSmooth;
+    svoSteer.writeMicroseconds(steer);
+    svoThrottle.writeMicroseconds(throttle);
+    lastServoWriteTime = now;
+  }
 }
 
 uint32_t lastSerialWrite = 0;
