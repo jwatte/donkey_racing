@@ -36,23 +36,39 @@ s_widthatbottomcm=54.0
 #s_frontatcentercm=62.0
 s_frontatcentercm=58.0  # calculated, this would be 62 cm at 22.5 deg; this is from measurement
 
+s_calcangledeg = deg(math.atan2(s_frontatcentercm, s_camheightcm))
+s_frontangledeg = deg(math.atan2(s_frontatbottomcm, s_camheightcm))
+# print 's_calcangledeg = %f' % (90-s_calcangledeg,)
+# print 's_frontangledeg = %f' % (90-s_frontangledeg,)
+s_halffovydeg = s_calcangledeg - s_frontangledeg
+print 's_halffovy = %f' % (s_halffovydeg,)
+s_halfdist = 240 - s_toppx
+
+# I now know:
+# At 12 cm forward, I want to return 240 + s_halfdist
+# At 58 cm forward, I want to return 240
+# The angle down is s_calcangledeg - math.atan2(fcm, s_camheightcm)
+# The position is 240 + math.sin(angledown) * s_halfdist / math.sin(halffov)
+s_sinhalffov = math.sin(rad(s_halffovydeg))
+
+# half-ass this number
+s_hfrontmulpx = 170
+
 # derived values
-s_disttobottomcm=math.sqrt(s_camheightcm*s_camheightcm+s_frontatbottomcm*s_frontatbottomcm)
-s_hfovhdeg=deg(math.atan(s_widthatbottomcm*0.5/s_disttobottomcm))  # full fov is about 90 !?
-s_calcangledeg=90.0-deg(math.atan(s_frontatcentercm/s_camheightcm)) # approximately 20 deg
-s_bottomangledeg=deg(math.atan(s_frontatbottomcm/s_camheightcm))    # full fov is about 90
-s_hfovvdeg=90.0-s_calcangledeg-s_bottomangledeg
-s_vfrontmulpx=s_heightpx/2.0/math.tan(rad(s_hfovvdeg))
-s_hfrontmulpx=s_widthpx/2.0/math.tan(rad(s_hfovhdeg))
+
+def shape_y(fcm):
+    angledown = s_calcangledeg - deg(math.atan2(fcm, s_camheightcm))
+    return 240 + math.sin(rad(angledown)) * s_halfdist / s_sinhalffov
 
 def sq_ypos(fcm):
-    f_updeg=deg(math.atan(fcm/s_camheightcm))
-    f_down=(90.0-s_calcangledeg)-f_updeg
-    f_x=math.tan(rad(f_down))*s_slopescale
-    f_tandown = (-s_slope * f_x * f_x + f_x + s_slope)/s_slopescale
-    f_ret=s_vfrontmulpx*f_tandown+480/2.0
+    # f_updeg=deg(math.atan(fcm/s_camheightcm))
+    # f_down=(90.0-s_calcangledeg)-f_updeg
+    # f_x=math.tan(rad(f_down))*s_slopescale
+    # f_tandown = (-s_slope * f_x * f_x + f_x + s_slope)/s_slopescale
+    # f_ret=s_vfrontmulpx*f_tandown+480/2.0
+    f_ret = shape_y(fcm)
     f_ok=(f_ret>=s_toppx and f_ret<=s_toppx+s_heightpx)
-    print(('fcm=%.1f down=%.1f tan=%.2f ret=%.1f' % (fcm, f_down, f_tandown, f_ret)))
+    # print(('fcm=%.1f ret=%.1f' % (fcm, f_ret)))
     return f_ret, f_ok
     
 def sq_xpos(fcm,dxcm):

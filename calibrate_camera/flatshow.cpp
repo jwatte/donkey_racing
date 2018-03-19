@@ -10,26 +10,26 @@
 #include <iostream>
 #include <string>
 
-#include "table.h"
+#include "flat_table.h"
 
 using namespace cv;
 using namespace std;
 
-TableInputCoord tc[RECTIFIED_HEIGHT][RECTIFIED_WIDTH];
+TableInputCoord tc[FLAT_RECTIFIED_HEIGHT][FLAT_RECTIFIED_WIDTH];
 
 int main(int argc, char const *argv[]) {
     if (argc == 1) {
         cerr << "usage: flatshow image ..." << endl;
         exit(1);
     }
-    for (int r = 0; r != RECTIFIED_HEIGHT; ++r) {
-        for (int c = 0; c != RECTIFIED_WIDTH; ++c) {
-            tc[r][c].sx = sTableInputCoords[r][c].sy;
-            tc[r][c].sy = sTableInputCoords[r][c].sx;
+    for (int r = 0; r != FLAT_RECTIFIED_HEIGHT; ++r) {
+        for (int c = 0; c != FLAT_RECTIFIED_WIDTH; ++c) {
+            tc[r][c].sx = sFlatTableInputCoords[r][c].sy;
+            tc[r][c].sy = sFlatTableInputCoords[r][c].sx;
         }
     }
-    Mat mapxy(RECTIFIED_WIDTH, RECTIFIED_HEIGHT, CV_32FC2, (float *)tc);
-    Mat proc(RECTIFIED_WIDTH, RECTIFIED_HEIGHT, CV_32FC3, Scalar::all(0.0f));
+    Mat mapxy(FLAT_RECTIFIED_WIDTH, FLAT_RECTIFIED_HEIGHT, CV_32FC2, (float *)tc);
+    Mat proc(FLAT_RECTIFIED_WIDTH, FLAT_RECTIFIED_HEIGHT, CV_32FC3, Scalar::all(0.0f));
     for (int i = 1; i < argc; ++i) {
         Mat image;
         image = imread(argv[i], IMREAD_COLOR);
