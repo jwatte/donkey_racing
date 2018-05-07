@@ -30,6 +30,7 @@
 #define PIN_STEER_OUT 5
 #define PIN_THROTTLE_OUT 6
 #define PIN_POWER_CONTROL 20
+#define PIN_MSG_LED 21
 
 #define RPI_SERIAL Serial3  //  UART
 //#define RPI_SERIAL Serial   //  USB

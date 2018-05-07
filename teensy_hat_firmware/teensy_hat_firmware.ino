@@ -53,7 +53,9 @@ void read_voltage(uint16_t &v, float &voltage) {
 void setup() {
   analogReference(DEFAULT);
   analogReadRes(12);
-  
+
+  pinMode(PIN_MSG_LED, OUTPUT);
+  digitalWrite(PIN_MSG_LED, HIGH);
   pinMode(PIN_STEER_IN, INPUT_PULLDOWN);
   pinMode(PIN_THROTTLE_IN, INPUT_PULLDOWN);
   pinMode(PIN_MODE_IN, INPUT_PULLDOWN);
@@ -428,6 +430,13 @@ void update_serial(uint32_t now) {
 void loop() {
   
   uint32_t now = millis();
+  if (lastInputTime != 0) {
+    //  blick quickly when receiving signals
+    digitalWrite(PIN_MSG_LED, (now & 256) ? HIGH : LOW);
+  } else {
+    //  blink slowly when idle
+    digitalWrite(PIN_MSG_LED, (now & 2048) ? HIGH : LOW);
+  }
 
   read_inputs(now);
   if (lastInputTime && (now - lastInputTime > INPUT_TIMEOUT)) {
@@ -456,6 +465,8 @@ void loop() {
 }
 
 #else
+
+/* When using the simplified firmware, just emulate the PCA board */
 
 PCA9685Emulator pwmEmulation;
 
