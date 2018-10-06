@@ -2,7 +2,9 @@
 #include "PinPulseIn.h"
 #include "FlySkyIBus.h"
 #include "PCA9685Emulator.h"
+#if defined(SUPPORT_VESC)
 #include "VescCommands.h"
+#endif
 
 #include <Servo.h>
 
@@ -17,8 +19,10 @@ PinPulseIn<13> rcMode;
 Servo svoSteer;
 Servo svoThrottle;
 
+#if defined(SUPPORT_VESC)
 VescCommands vesc(VESC_SERIAL);
 uint32_t lastVescThrottle;
+#endif
 
 uint16_t iBusInput[10];
 FlySkyIBus fsIbus(IBUS_SERIAL, iBusInput, 10);
@@ -78,7 +82,9 @@ void setup() {
   fsIbus.begin();
 
   RPI_SERIAL.begin(RPI_BAUD_RATE);
+  #if defined(SUPPORT_VESC)
   vesc.begin(VESC_BAUD_RATE);
+  #endif
 
   pwmEmulation.begin(PCA9685_I2C_ADDRESS);
 
@@ -368,6 +374,7 @@ void generate_output(uint32_t now) {
     }
   }
 
+  #if defined(SUPPORT_VESC)
   int32_t vth = map_vesc_throttle(throttle);
   if (vth == 0) {
     if (now - lastVescThrottle < 1500) {
@@ -381,6 +388,7 @@ void generate_output(uint32_t now) {
     vesc.setDuty(vth);
     lastVescThrottle = now;
   }
+  #endif
 
   static uint32_t lastServoWriteTime;
   if (now - lastServoWriteTime >= 16) {
@@ -457,7 +465,9 @@ void loop() {
   }
 
   generate_output(now);
+  #if defined(SUPPORT_VESC)
   vesc.poll(now);
+  #endif
 
   update_serial(now);
 

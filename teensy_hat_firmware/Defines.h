@@ -1,8 +1,11 @@
 #if !defined(Defines_h)
 #define Defines_h
 
-//  My HiTec servo is backwards. Set this to 1 for regular.
-#define STEER_MULTIPLY -1
+//  If you use a VESC for controlling motor, turn on VESC support with 1
+#define SUPPORT_VESC 0
+
+//  My HiTec servo is backwards, and uses -1. Set this to 1 for regular.
+#define STEER_MULTIPLY 1
 
 //  Whether to apply dead-man's grip control for I2C commands
 #define GATE_I2C_ON_RC_THROTTLE 0
@@ -22,6 +25,7 @@
 #define MAX_STEER 1900
 //  My steering is slightly off to the left, so compensate.
 #define STEER_ADJUSTMENT 14
+
 #define PIN_STEER_IN 11
 #define PIN_THROTTLE_IN 12
 #define PIN_MODE_IN 13
