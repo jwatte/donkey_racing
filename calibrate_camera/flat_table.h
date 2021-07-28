@@ -5,11 +5,11 @@
 
 #include "table.h"
 
-#define FLAT_RECTIFIED_WIDTH 146
-#define FLAT_RECTIFIED_HEIGHT 146
+#define FLAT_RECTIFIED_WIDTH 192
+#define FLAT_RECTIFIED_HEIGHT 96
 
 
-/* total table size 21316 elements 170528 bytes */
+/* total table size 18432 elements 147456 bytes */
 extern TableInputCoord const sFlatTableInputCoords[FLAT_RECTIFIED_HEIGHT][FLAT_RECTIFIED_WIDTH];
 
 #endif

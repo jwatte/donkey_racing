@@ -9,10 +9,10 @@ cdata = pickle.load(open("calibrate.pkl", "rb"))
 fullx = cdata['mapx']
 fully = cdata['mapy']
 
-owidth=146
-oheight=146
+owidth=192
+oheight=96
 sq_cm=1.3
-y_offset_cm=20.0
+y_offset_cm=30.0
 
 def samplexy(xmap, ymap, x, y):
     xi=int(math.floor(x))

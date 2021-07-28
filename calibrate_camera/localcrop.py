@@ -52,12 +52,17 @@ s_halfdist = 240 - s_toppx
 s_sinhalffov = math.sin(rad(s_halffovydeg))
 
 # half-ass this number
-s_hfrontmulpx = 170
+s_hfrontmulpx = 180
 
 # derived values
 
 def shape_y(fcm):
     angledown = s_calcangledeg - deg(math.atan2(fcm, s_camheightcm))
+    # compensate for some inaccuracies in my calibration
+    # if angledown < 0:
+    angledown = angledown - angledown*angledown * 0.007
+    # if angledown < 0:
+    #     angledown = angledown * 1.2
     return 240 + math.sin(rad(angledown)) * s_halfdist / s_sinhalffov
 
 def sq_ypos(fcm):
@@ -74,8 +79,6 @@ def sq_ypos(fcm):
 def sq_xpos(fcm,dxcm):
     f_dist=math.sqrt(fcm*fcm+s_camheightcm*s_camheightcm)
     f_rtscale=dxcm/f_dist
-    #f_rightdeg=math.atan(rtscale)
-    #f_tanright=math.tan(f_rightdeg)
     f_ret=s_hfrontmulpx*f_rtscale+640/2.0
     f_ok=(f_ret>=s_leftpx and f_ret<=s_widthpx+s_leftpx)
     return f_ret, f_ok

@@ -4,7 +4,7 @@ CFLAGS:=-I/usr/local/include
 PYTHON:=python2
 
 all:	obj/flatshow
-	obj/flatshow img/race2.png # img/squares2.png
+	obj/flatshow img/race3.png # img/squares2.png
 
 obj/flatshow:	obj/flatshow.o obj/flat_table.o
 	g++ $(LFLAGS) -g -o $@ $^ -lopencv_core -lopencv_imgproc -lopencv_highgui -MMD -lopencv_imgcodecs

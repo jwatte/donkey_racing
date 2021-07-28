@@ -8,7 +8,7 @@
 
 #include <Servo.h>
 
-#define FULL_FIRMWARE 1
+#define FULL_FIRMWARE 0
 
 #if FULL_FIRMWARE
 
